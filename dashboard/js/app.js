@@ -1,7 +1,7 @@
 window.AST = window.AST || {};
 AST.fields = [
   {group:'기체',items:[['aircraft.mass','최대이륙질량 MTOW','kg'],['aircraft.nLimit','제한 하중계수','—'],['aircraft.fs','안전계수','—'],['aircraft.g','중력가속도','m/s²']]},
-  {group:'주익',items:[['wing.area','날개 면적 S','m²'],['wing.span','날개폭 b','m'],['wing.autoAR','가로세로비 자동 계산: b²/S','bool'],['wing.ar','가로세로비 AR','—'],['wing.rootChord','익근 시위','m'],['wing.tipChord','익단 시위','m'],['wing.mac','평균공력시위','m'],['wing.taper','테이퍼비','—'],['wing.sweep','앞전 후퇴각','deg'],['wing.quarterSweep','1/4 시위 후퇴각','deg'],['wing.tc','최대 두께비 t/c','—']]},
+  {group:'주익',items:[['wing.area','날개 면적 S','m²'],['wing.autoAR','주익 형상 입력 기준','bool'],['wing.span','날개폭 b','m'],['wing.ar','가로세로비 AR','—'],['wing.taper','테이퍼비','—'],['wing.autoChords','시위 자동 계산: S, b, 테이퍼비','bool'],['wing.rootChord','익근 시위','m'],['wing.tipChord','익단 시위','m'],['wing.mac','평균공력시위','m'],['wing.sweep','앞전 후퇴각','deg'],['wing.quarterSweep','1/4 시위 후퇴각','deg'],['wing.tc','최대 두께비 t/c','—']]},
   {group:'동체',items:[['fuselage.length','동체 길이','m'],['fuselage.width','최대 폭','m'],['fuselage.height','최대 높이','m'],['fuselage.wettedArea','기준·젖은 면적','m²'],['fuselage.ld','길이/직경비 l/d','—'],['fuselage.lt','Raymer Lt','m']]},
   {group:'비행 조건',items:[['flight.speed','비행속도 V','m/s'],['flight.rho','공기밀도 ρ','kg/m³'],['flight.autoQ','동압 자동 계산: ½ρV²','bool'],['flight.q','동압 q','Pa'],['flight.gustSpeed','돌풍속도 Ude','m/s'],['flight.liftSlope','양력곡선기울기 a','1/rad'],['flight.muG','돌풍 질량비 μg','—']]},
   {group:'착륙 조건',items:[['landing.drop','낙하 높이 h','m'],['landing.stop','정지 거리 s','m']]},
@@ -29,7 +29,7 @@ AST.resultDefs = [
   {section:'기체',label:'최대이륙질량',unit:'kg',read:r=>r.state.aircraft.mass,equation:'사용자 입력값: 최대이륙질량 [kg].'},
   {section:'기체',label:'날개폭',unit:'m',read:r=>r.state.wing.span,equation:'사용자 입력값: 날개폭 b [m].'},
   {section:'기체',label:'날개 면적',unit:'m²',read:r=>r.state.wing.area,equation:'사용자 입력값: 날개 면적 S [m²].'},
-  {section:'기체',label:'가로세로비',unit:'—',read:r=>r.state.wing.ar,equation:'자동 계산을 켠 경우 AR = b² / S.'},
+  {section:'기체',label:'가로세로비',unit:'—',read:r=>r.state.wing.ar,equation:'날개폭 입력 시 AR = b² / S, AR 입력 시 b = √(AR × S).'},
   {section:'중량',label:'Finger 공허중량',unit:'kg',read:r=>r.weight.finger,equation:'We = 0.699 × MTOW^0.949. MTOW와 We는 kg.',status:'전체 공허중량'},
   {section:'중량',label:'Raymer 주익',unit:'kg',read:r=>r.weight.raymerWing,equation:'Ww = 0.036 Sw^0.758 Wfw^0.0035 (AR/cos²Λ)^0.6 q^0.006 λ^0.04 [100(t/c)/cosΛ]^−0.3 (Nult Wdg)^0.49. Sw는 ft², q는 psf, Wdg는 lb; 결과 lb를 kg으로 변환. 날개 내 연료 없음: Wfw = 1.',status:'경험식'},
   {section:'중량',label:'Sadraey 주익 식 값',unit:'참고값',read:r=>r.weight.sadraeyWing,equation:'Wwing = S c̄ (t/c)max ρmat Kρ,w [AR nult / cosΛc/4]^0.6 λ^0.04 g. 원문 식에 SI 입력값을 그대로 대입.',status:'계수·단위 검증 필요'},
@@ -58,24 +58,56 @@ AST.state=AST.clone(AST.defaults);
 AST.lastResult=null;
 AST.fieldHTML = function([path,label,unit],advanced) {
   const val=AST.get(AST.state,path), boolean=unit==='bool';
+  const locked=AST.state.presetLocked && AST.inhaTwoProp.lockedPaths.includes(path);
   const tip=advanced || path==='fuselage.lt' ? ' title="계수 정의 확인 필요"' : '';
-  if(boolean)return `<label class="check-field"><input type="checkbox" data-path="${path}" ${val?'checked':''}><span>${AST.escape(label)}</span></label>`;
+  if(path==='wing.autoAR')return `<label class="field"><span>${AST.escape(label)}</span><select data-path="wing.autoAR" ${locked?'disabled':''}><option value="span" ${val?'selected':''}>날개폭 입력 · AR 자동 계산</option><option value="ar" ${val?'':'selected'}>AR 입력 · 날개폭 자동 계산</option></select></label>`;
+  if(boolean)return `<label class="check-field"><input type="checkbox" data-path="${path}" ${val?'checked':''} ${locked?'disabled':''}><span>${AST.escape(label)}</span></label>`;
   const step=AST.inputSteps[path] ?? 'any';
-  return `<label class="field"><span>${AST.escape(label)}${advanced || path==='fuselage.lt' ? '<span class="verify-icon"'+tip+'>?</span>':''}</span><span class="input-unit"><input type="number" inputmode="decimal" data-path="${path}" step="${step}" value="${AST.escape(val)}" title="증감 단위: ${step} ${AST.escape(unit)}"><em>${AST.escape(unit)}</em></span></label>`;
+  return `<label class="field"><span>${AST.escape(label)}${advanced || path==='fuselage.lt' ? '<span class="verify-icon"'+tip+'>?</span>':''}</span><span class="input-unit"><input type="number" inputmode="decimal" data-path="${path}" step="${step}" value="${AST.escape(val)}" title="증감 단위: ${step} ${AST.escape(unit)}" ${locked?'readonly':''}><em>${AST.escape(unit)}</em></span></label>`;
 };
 AST.buildInputs = function() {
-  document.getElementById('inputGroups').innerHTML=AST.fields.map(g=>`<details class="input-group" ${g.advanced?'':'open'}><summary>${AST.escape(g.group)} <span>${g.items.length}</span></summary><div class="fields">${g.items.map(x=>AST.fieldHTML(x,g.advanced)).join('')}</div></details>`).join('')+
+  document.getElementById('inputGroups').innerHTML=AST.fields.map(g=>`<details class="input-group" ${g.advanced?'':'open'}><summary>${AST.escape(g.group)} <span>${g.items.length}</span></summary><div class="fields">${g.items.map(x=>AST.fieldHTML(x,g.advanced)).join('')}</div>${g.group==='주익'?'<p id="wingConsistency" class="micro wing-consistency" role="status"></p>':''}</details>`).join('')+
   `<details class="input-group" open><summary>스파 설계 하중 <span>2</span></summary><div class="fields"><label class="field"><span>하중 조건</span><select data-path="design.source"><option value="ultimate">극한 하중</option><option value="gust">양의 돌풍 하중</option><option value="custom">사용자 지정 하중</option></select></label>${AST.fieldHTML(['design.customLoad','사용자 지정 총양력','N'],false)}</div></details>`;
   const container=document.getElementById('inputGroups');
   container.oninput=AST.onInput;
   container.onchange=AST.onInput;
 };
+AST.applyInhaPreset = function() {
+  const next=AST.clone(AST.defaults);
+  next.aircraft.mass=24.9;
+  next.aircraft.g=9.81;
+  next.wing.area=0.74;
+  next.wing.autoAR=false;
+  next.wing.ar=12;
+  next.wing.autoChords=true;
+  next.flight.speed=30.71;
+  next.flight.rho=1;
+  next.flight.autoQ=true;
+  next.sensitivity.variable='wing.ar';
+  next.presetLocked=true;
+  AST.state=AST.synchronize(next);
+  AST.buildInputs();
+  AST.render();
+  document.getElementById('presetStatus').textContent='인하대 기준값 적용 · 잠금 중';
+};
 AST.onInput = function(e) {
   const el=e.target,path=el.dataset.path;if(!path)return;
-  if(path==='wing.autoAR' && !el.checked) AST.state.wing.ar=AST.resolve(AST.state).wing.ar;
+  if(AST.state.presetLocked && AST.inhaTwoProp.lockedPaths.includes(path))return;
+  if(path==='wing.autoAR') {
+    const current=AST.resolve(AST.state).wing;
+    AST.state.wing.span=current.span;
+    AST.state.wing.ar=current.ar;
+  }
+  if(path==='wing.autoChords' && !el.checked) {
+    const current=AST.resolve(AST.state).wing;
+    for(const key of ['rootChord','tipChord','mac'])AST.state.wing[key]=current[key];
+  }
   if(path==='flight.autoQ' && !el.checked) AST.state.flight.q=AST.resolve(AST.state).flight.q;
-  const value=el.type==='checkbox'?el.checked:el.tagName==='SELECT'?el.value:el.value.trim()===''?NaN:Number(el.value);
+  const value=path==='wing.autoAR'?el.value==='span':el.type==='checkbox'?el.checked:el.tagName==='SELECT'?el.value:el.value.trim()===''?NaN:Number(el.value);
   AST.set(AST.state,path,value);
+  AST.synchronize(AST.state);
+  const presetStatus=document.getElementById('presetStatus');
+  if(presetStatus.textContent && !AST.state.presetLocked) presetStatus.textContent='기준값 적용 후 수정됨';
   AST.render();
 };
 AST.resultHTML = function(d,r) {
@@ -119,8 +151,24 @@ AST.render = function() {
   banner.hidden=!r.errors.length;
   banner.innerHTML=r.errors.length?`<strong>입력값을 확인하세요</strong><ul>${r.errors.map(e=>`<li>${AST.escape(e)}</li>`).join('')}</ul>`:'';
   const resolved=r.state;
-  for(const path of ['wing.ar','flight.q']) {const el=document.querySelector(`[data-path="${path}"]`);if(el){el.readOnly=(path==='wing.ar'?AST.state.wing.autoAR:AST.state.flight.autoQ);if(el.readOnly && Number.isFinite(AST.get(resolved,path)))el.value=AST.get(resolved,path).toFixed(4);}}
+  const wing=resolved.wing, wingNotice=document.getElementById('wingConsistency');
+  const planformArea=wing.span*(wing.rootChord+wing.tipChord)/2;
+  const derivedTaper=wing.tipChord/wing.rootChord;
+  const derivedMAC=(2/3)*wing.rootChord*(1+derivedTaper+derivedTaper**2)/(1+derivedTaper);
+  const mismatch=!wing.autoChords && [
+    Math.abs(planformArea/wing.area-1),
+    Math.abs(derivedTaper/wing.taper-1),
+    Math.abs(derivedMAC/wing.mac-1)
+  ].some(error=>Number.isFinite(error)&&error>0.02);
+  wingNotice.textContent=mismatch?'직접 입력한 시위가 날개 면적·테이퍼비와 일치하지 않습니다.':'';
+  for(const path of ['wing.span','wing.ar','wing.rootChord','wing.tipChord','wing.mac','flight.q']) {
+    const el=document.querySelector(`[data-path="${path}"]`);
+    if(!el)continue;
+    el.readOnly=(AST.state.presetLocked && AST.inhaTwoProp.lockedPaths.includes(path)) || (path==='wing.span'?!AST.state.wing.autoAR:path==='wing.ar'?AST.state.wing.autoAR:path==='flight.q'?AST.state.flight.autoQ:AST.state.wing.autoChords);
+    if(el.readOnly && Number.isFinite(AST.get(resolved,path)))el.value=AST.get(resolved,path).toFixed(4);
+  }
   const sourceEl=document.querySelector('[data-path="design.source"]');if(sourceEl)sourceEl.value=AST.state.design.source;
+  document.getElementById('unlockPreset').hidden=!AST.state.presetLocked;
   const customEl=document.querySelector('[data-path="design.customLoad"]');if(customEl)customEl.disabled=AST.state.design.source!=='custom';
   AST.renderToggles();
   for(const id of ['downloadCSV','downloadText','downloadPNG','saveJSON'])document.getElementById(id).disabled=!!r.errors.length;
@@ -151,15 +199,21 @@ AST.sanitizeImported = function(input){
     }
   }
   if(!['ultimate','gust','custom'].includes(next.design.source))next.design.source='ultimate';
+  next.presetLocked=input.presetLocked===true;
   if(!AST.sensitivityDefs[next.sensitivity.equation])next.sensitivity.equation='sparCap';
-  if(AST.validate(AST.resolve(next)).length)throw Error('불러온 입력값에 유효하지 않은 값이 있습니다.');
-  return next;
+  if(input.wing && !('autoChords' in input.wing))next.wing.autoChords=false;
+  const resolved=AST.resolve(next);
+  if(AST.validate(resolved).length)throw Error('불러온 입력값에 유효하지 않은 값이 있습니다.');
+  return AST.synchronize(next);
 };
 document.addEventListener('DOMContentLoaded',()=>{
+  AST.synchronize(AST.state);
   AST.buildInputs();
   document.getElementById('displayToggles').addEventListener('change',e=>{const key=e.target.dataset.display;if(key){AST.state.display[key]=e.target.checked;AST.render();}});
   document.querySelectorAll('[data-camera]').forEach(b=>b.addEventListener('click',()=>AST.setCamera(b.dataset.camera)));
-  document.getElementById('resetInputs').addEventListener('click',()=>{AST.state=AST.clone(AST.defaults);AST.buildInputs();AST.render();});
+  document.getElementById('applyInhaPreset').addEventListener('click',AST.applyInhaPreset);
+  document.getElementById('unlockPreset').addEventListener('click',()=>{AST.state.presetLocked=false;AST.buildInputs();AST.render();document.getElementById('presetStatus').textContent='기준값 잠금 해제됨';});
+  document.getElementById('resetInputs').addEventListener('click',()=>{AST.state=AST.synchronize(AST.clone(AST.defaults));AST.buildInputs();AST.render();document.getElementById('presetStatus').textContent='';});
   document.getElementById('sensitivityEquation').addEventListener('change',e=>{AST.state.sensitivity.equation=e.target.value;AST.state.sensitivity.variable='';AST.renderSensitivityUI();});
   document.getElementById('sensitivityVariable').addEventListener('change',e=>{AST.state.sensitivity.variable=e.target.value;AST.renderSensitivityUI();});
   document.getElementById('sensitivityRange').addEventListener('change',e=>{AST.customRangeMode=e.target.value==='custom';if(!AST.customRangeMode)AST.state.sensitivity.range=Number(e.target.value);AST.renderSensitivityUI();});
@@ -171,7 +225,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('loadJSON').addEventListener('change',async e=>{
     const file=e.target.files[0];if(!file)return;
     const status=document.getElementById('importStatus');
-    try{AST.state=AST.sanitizeImported(JSON.parse(await file.text()));AST.buildInputs();AST.render();status.textContent=file.name+'에서 입력값을 불러왔습니다.';}
+    try{AST.state=AST.sanitizeImported(JSON.parse(await file.text()));AST.buildInputs();AST.render();document.getElementById('presetStatus').textContent=AST.state.presetLocked?'불러온 기준값 · 잠금 중':'';status.textContent=file.name+'에서 입력값을 불러왔습니다.';}
     catch(err){status.textContent='JSON을 불러오지 못했습니다: '+err.message;}
     e.target.value='';
   });

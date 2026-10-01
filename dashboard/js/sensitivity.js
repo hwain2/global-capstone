@@ -7,7 +7,7 @@ AST.sensitivityDefs = {
   sadraeyFuse: { label:'Sadraey 동체 식 값', unit:'참고값', paths:['fuselage.width','fuselage.height','fuselage.length','material.density','material.krf','material.pmax','material.kinlet','aircraft.nLimit','aircraft.fs','aircraft.g'], read:r=>r.weight.sadraeyFuse },
   gustPlus: { label:'양의 돌풍 하중계수', unit:'g', paths:['aircraft.mass','aircraft.g','wing.area','flight.rho','flight.gustSpeed','flight.speed','flight.liftSlope','flight.muG'], read:r=>r.loads.gustPlus },
   impact: { label:'평균 착륙 충격력', unit:'N', paths:['aircraft.mass','aircraft.g','landing.drop','landing.stop'], read:r=>r.loads.impact },
-  sparCap: { label:'필요 스파 캡 면적', unit:'mm²', paths:['aircraft.mass','aircraft.nLimit','aircraft.fs','aircraft.g','wing.span','wing.area','flight.rho','flight.gustSpeed','flight.speed','flight.liftSlope','flight.muG','design.customLoad','material.capStress','material.capHeight'], read:r=>r.spar.capAreaMm2 },
+  sparCap: { label:'필요 스파 캡 면적', unit:'mm²', paths:['aircraft.mass','aircraft.nLimit','aircraft.fs','aircraft.g','wing.span','wing.ar','wing.area','flight.rho','flight.gustSpeed','flight.speed','flight.liftSlope','flight.muG','design.customLoad','material.capStress','material.capHeight'], read:r=>r.spar.capAreaMm2 },
   sparWeb: { label:'필요 스파 웹 두께', unit:'mm', paths:['aircraft.mass','aircraft.nLimit','aircraft.fs','aircraft.g','wing.area','flight.rho','flight.gustSpeed','flight.speed','flight.liftSlope','flight.muG','design.customLoad','material.webStress','material.webHeight'], read:r=>r.spar.webThicknessMm }
 };
 AST.sensitivity = function (state, equation, variable, range) {
@@ -15,14 +15,22 @@ AST.sensitivity = function (state, equation, variable, range) {
   if (!def) return null;
   const sparEquation = equation === 'sparCap' || equation === 'sparWeb';
   const paths = def.paths.filter(path => !(path === 'wing.ar' && state.wing.autoAR) &&
+    !(path === 'wing.span' && !state.wing.autoAR) &&
+    !(path === 'wing.mac' && state.wing.autoChords) &&
     !(path === 'flight.q' && state.flight.autoQ) &&
     !((path === 'flight.speed' || path === 'flight.rho') && !state.flight.autoQ && (equation === 'raymerWing' || equation === 'raymerFuse')) &&
     !(path === 'design.customLoad' && state.design.source !== 'custom') &&
-    !(sparEquation && state.design.source === 'custom' && !['design.customLoad','wing.span','material.capStress','material.capHeight','material.webStress','material.webHeight'].includes(path)));
-  // Keep active design-load dependencies only. Span also changes Auto AR but does not affect spar load.
+    !(sparEquation && state.design.source === 'custom' && !(
+      ['design.customLoad','material.capStress','material.capHeight','material.webStress','material.webHeight'].includes(path) ||
+      (equation === 'sparCap' && (path === (state.wing.autoAR ? 'wing.span' : 'wing.ar') || (!state.wing.autoAR && path === 'wing.area')))
+    )));
+  // Include only independent geometry inputs and active design-load dependencies.
   const active = paths.filter(path => {
     if ((equation === 'sparCap' || equation === 'sparWeb') && state.design.source === 'gust') return path !== 'aircraft.nLimit' && path !== 'aircraft.fs';
-    if ((equation === 'sparCap' || equation === 'sparWeb') && state.design.source === 'ultimate') return !['wing.area','flight.rho','flight.gustSpeed','flight.speed','flight.liftSlope','flight.muG'].includes(path);
+    if ((equation === 'sparCap' || equation === 'sparWeb') && state.design.source === 'ultimate') {
+      if (['flight.rho','flight.gustSpeed','flight.speed','flight.liftSlope','flight.muG'].includes(path)) return false;
+      if (path === 'wing.area') return equation === 'sparCap' && !state.wing.autoAR;
+    }
     return true;
   });
   const base = AST.calculate(state);
