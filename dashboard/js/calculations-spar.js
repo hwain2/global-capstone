@@ -40,5 +40,5 @@ AST.calculate = function (input) {
   const weight = AST.weight(s), loads = AST.loads(s), spar = AST.spar(s, loads);
   const values = { ...weight, ...loads, ...spar };
   if (Object.values(values).some(v => v!==null && typeof v==='number' && !Number.isFinite(v))) return { state:s, errors:['계산 결과가 유한하지 않습니다. 입력 범위를 확인하세요.'] };
-  return { state:s, errors:[], weight, loads, spar, span:AST.spanLoads(spar.wingLoad??loads.ultimate, s.wing.span) };
+  return { state:s, errors:[], weight, loads, spar, span:AST.spanLoads(spar.wingLoad??loads.ultimate, s.wing.span),optimization:AST.optimizeSpar(s,loads) };
 };

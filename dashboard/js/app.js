@@ -5,8 +5,9 @@ AST.fields = [
   {group:'동체',items:[['fuselage.length','동체 길이','m'],['fuselage.width','최대 폭','m'],['fuselage.height','최대 높이','m'],['fuselage.wettedArea','기준·젖은 면적','m²'],['fuselage.ld','길이/직경비 l/d','—'],['fuselage.lt','Raymer Lt','m']]},
   {group:'비행 조건',items:[['flight.speed','순항속도 V','m/s'],['flight.rho','공기밀도 ρ','kg/m³'],['flight.q','동압 q = ½ρV²','Pa'],['flight.cruiseCL','순항 CL','—'],['flight.ld','순항 L/D','—'],['flight.gustSpeed','돌풍속도 Ude','m/s'],['flight.liftSlope','양력곡선기울기 a','1/rad'],['flight.muG','돌풍 질량비 μg','—']]},
   {group:'착륙 조건',items:[['landing.drop','낙하 높이 h','m'],['landing.stop','정지 거리 s','m']]},
-  {group:'재료·구조',items:[['material.density','재료 밀도','kg/m³'],['material.capStress','캡 허용응력','MPa'],['material.webStress','웹 허용전단응력','MPa']]},
-  {group:'스파 설계 · STRUCT',items:[['sparDesign.depthFactor','깊이 활용률 (0~1)','—'],['sparDesign.localThicknessMm','스파 위치 익형두께','mm'],['sparDesign.requestedDepthMm','선정 스파 깊이','mm'],['sparDesign.selectedCapAreaMm2','선정 캡 면적','mm²'],['sparDesign.selectedWebThicknessMm','선정 웹 두께','mm'],['sparDesign.manufacturingMinWebMm','제작 최소 웹 두께','mm']]},
+  {group:'재료·구조',items:[['material.density','재료 밀도','kg/m³'],['material.capStress','캡 허용응력','MPa'],['material.webStress','웹 허용전단응력','MPa'],['material.elasticModulusGPa','스파 탄성계수 E','GPa']]},
+  {group:'스파 자동 탐색 · STRUCT',items:[['sparDesign.depthFactor','깊이 활용률 (0~1)','—'],['sparDesign.localThicknessMm','스파 위치 익형두께','mm'],['sparDesign.capWidthMm','캡 폭','mm'],['sparDesign.manufacturingMinCapMm','제작 최소 캡 두께','mm'],['sparDesign.manufacturingMinWebMm','제작 최소 웹 두께','mm']]},
+  {group:'기존 스파 단면 비교 · STRUCT',advanced:true,items:[['sparDesign.requestedDepthMm','기존 선정 스파 깊이','mm'],['sparDesign.selectedCapAreaMm2','기존 선정 캡 면적','mm²'],['sparDesign.selectedWebThicknessMm','기존 선정 웹 두께','mm']]},
   {group:'고급 계수',advanced:true,items:[['material.krw','Kρ,w','참고값'],['material.krf','Kρ,f','참고값'],['material.kinlet','K inlet','참고값'],['material.pmax','P max','참고값']]}
 ];
 AST.inputSteps = Object.freeze({
@@ -21,10 +22,11 @@ AST.inputSteps = Object.freeze({
   'landing.drop':0.005, 'landing.stop':0.001,
   'material.density':5, 'material.krw':0.01, 'material.krf':0.01,
   'material.kinlet':0.01, 'material.pmax':0.01,
-  'material.capStress':2, 'material.webStress':1,
+  'material.capStress':2, 'material.webStress':1, 'material.elasticModulusGPa':1,
   'sparDesign.depthFactor':0.01, 'sparDesign.localThicknessMm':0.5,
   'sparDesign.requestedDepthMm':0.5, 'sparDesign.selectedCapAreaMm2':0.1,
   'sparDesign.selectedWebThicknessMm':0.01, 'sparDesign.manufacturingMinWebMm':0.01,
+  'sparDesign.capWidthMm':0.5, 'sparDesign.manufacturingMinCapMm':0.01,
   'design.customLoad':5,
   'feasibility.mtowLimit':0.1, 'feasibility.designTarget':0.1,
   'feasibility.tipDeflectionMm':0.5, 'feasibility.tipDeflectionLimitMm':0.5,
@@ -237,15 +239,15 @@ AST.render = function() {
   if(r.errors.length){
     AST.lastResult=null;
     document.getElementById('loadSelection').hidden=true;
-    ['weightResults','loadResults','sparResults','summaryTable','overviewCards','sensitivityTable','feasibilityVerdict','feasibilityCards','feasibilityActions','inputConfidence','criticalAssumptions'].forEach(id=>document.getElementById(id).innerHTML='<p class="muted">입력값을 수정하면 결과를 계산합니다.</p>');
-    for(const id of ['aircraftPlot','liftPlot','shearPlot','momentPlot','sensitivityCurve','sensitivityBars']){
+    ['weightResults','loadResults','sparResults','summaryTable','overviewCards','sensitivityTable','feasibilityVerdict','feasibilityCards','feasibilityActions','inputConfidence','criticalAssumptions','optimizationSummary','candidateDetail'].forEach(id=>document.getElementById(id).innerHTML='<p class="muted">입력값을 수정하면 결과를 계산합니다.</p>');
+    for(const id of ['aircraftPlot','liftPlot','shearPlot','momentPlot','sensitivityCurve','sensitivityBars','optimizationMass','optimizationCap','optimizationWeb','optimizationDeflection','optimizationMargin']){
       const target=document.getElementById(id);
       if(window.Plotly && target.data)Plotly.purge(target);
       target.innerHTML='<div class="plot-fallback">입력값을 수정하면 그래프를 갱신합니다.</div>';
     }
     return;
   }
-  AST.lastResult=r;AST.renderResults(r);AST.renderFeasibility(r);AST.render3D(resolved,r);AST.renderCharts(r,resolved);AST.renderSensitivityUI();
+  AST.lastResult=r;AST.renderResults(r);AST.renderOptimization(r);AST.renderFeasibility(r);AST.render3D(resolved,r);AST.renderCharts(r,resolved);AST.renderSensitivityUI();
 };
 AST.sanitizeImported = function(input){
   if(!input || typeof input!=='object')throw Error('JSON에는 객체가 있어야 합니다.');

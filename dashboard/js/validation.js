@@ -25,7 +25,7 @@ AST.validate = function (s) {
   if (s.wing.autoAR && Math.abs(s.wing.ar) > 1e5) errors.push('자동 계산된 가로세로비가 허용 범위를 벗어났습니다.');
   if(s.wing.tc>=1)errors.push('날개 최대 두께비 t/c는 1보다 작아야 합니다.');
   if(s.design.source==='custom' && (!Number.isFinite(s.design.customLoad)||s.design.customLoad<=0))errors.push('사용자 지정 총양력: 0보다 큰 값을 입력하세요.');
-  for(const [path,label] of [['flight.cruiseCL','순항 CL'],['flight.ld','순항 L/D'],['sparDesign.localThicknessMm','스파 위치 익형두께'],['sparDesign.requestedDepthMm','선정 스파 깊이'],['sparDesign.selectedCapAreaMm2','선정 캡 면적'],['sparDesign.selectedWebThicknessMm','선정 웹 두께'],['sparDesign.manufacturingMinWebMm','제작 최소 웹 두께'],['feasibility.tipDeflectionMm','예상 처짐'],['feasibility.tipDeflectionLimitMm','허용 처짐'],['feasibility.airfoilClMax','항공기 CLmax']]){
+  for(const [path,label] of [['flight.cruiseCL','순항 CL'],['flight.ld','순항 L/D'],['material.elasticModulusGPa','탄성계수 E'],['sparDesign.localThicknessMm','스파 위치 익형두께'],['sparDesign.requestedDepthMm','선정 스파 깊이'],['sparDesign.selectedCapAreaMm2','선정 캡 면적'],['sparDesign.selectedWebThicknessMm','선정 웹 두께'],['sparDesign.capWidthMm','캡 폭'],['sparDesign.manufacturingMinCapMm','제작 최소 캡 두께'],['sparDesign.manufacturingMinWebMm','제작 최소 웹 두께'],['feasibility.tipDeflectionMm','예상 처짐'],['feasibility.tipDeflectionLimitMm','허용 처짐'],['feasibility.airfoilClMax','항공기 CLmax']]){
     const n=AST.get(s,path);if(n!==null && (!Number.isFinite(n)||n<=0))errors.push(label+': 0보다 큰 값을 입력하세요.');
   }
   const factor=s.sparDesign.depthFactor;

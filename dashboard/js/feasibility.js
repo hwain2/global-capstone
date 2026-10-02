@@ -5,7 +5,7 @@ AST.budgetLabels = {
   avionics:'항전', wiring:'배선·PMU', payload:'탑재물', other:'기타'
 };
 AST.assessFeasibility = function(r){
-  const s=r.state,w=s.wing,f=s.feasibility,sp=r.spar,L=r.loads;
+  const s=r.state,w=s.wing,f=s.feasibility,sp=r.spar,L=r.loads,o=r.optimization;
   const fmt=(n,p=2)=>AST.fmt(n,p), has=n=>Number.isFinite(n)&&n>0;
   const cards=[],actions=[];
   const add=card=>{cards.push(card);if(card.action)actions.push(card.action);};
@@ -17,8 +17,20 @@ AST.assessFeasibility = function(r){
     cause:badGeometry.length?badGeometry.map(x=>x.name).join(' · '):'입력 기준과 자동 계산된 형상은 일치합니다. 테이퍼·익형·동체 치수의 출처는 별도 확인이 필요합니다.',
     action:badGeometry.length?'날개 면적·날개폭·익근/익단 시위를 일치시키세요.':'테이퍼, 익형 및 동체 형상 출처를 확인하세요.'});
 
+  const recommended=o.recommended,provisional=o.provisional;
+  add({title:'Automatic Spar Sizing · 자동 탐색',status:recommended?o.overall==='PASS'?'PASS':'MARGINAL':o.overall==='STRUCTURAL REDESIGN REQUIRED'?'FAIL':'TBD',
+    value:recommended?`추천 깊이 ${fmt(recommended.depthMm,1)} mm · 양쪽 날개 스파 ${fmt(recommended.massKg,3)} kg`:
+      provisional?`잠정 후보 ${fmt(provisional.depthMm,1)} mm · ${o.buildInputsReady?'제작 최소값 반영':'이론'} 스파 질량 ${fmt(provisional.massKg,3)} kg`:'추천 조건을 만족하는 후보 없음',
+    criterion:`가용 깊이 ${fmt(o.availableRootMm,1)} mm · 50–95% 범위에서 ${o.candidates.length}개 탐색`,
+    margin:recommended?`최소 강도 MS ${fmt(recommended.strengthMargin,2)} · 처짐 ${recommended.predictedDeflectionMm===null?'TBD':fmt(recommended.predictedDeflectionMm,1)+' mm'}`:'제작 조건 또는 형상 검증 필요',
+    cause:recommended?o.verifiedThickness?'입력한 스파 위치 두께를 기준으로 산정했습니다.':'익근 최대두께 상한을 사용했으므로 실제 x/c 두께 검증이 필요합니다.':
+      o.buildInputsReady?'설정된 제작·장착·강성 조건에서 해를 찾지 못했습니다.':'캡 폭 및 캡/웹 제작 최소두께가 없어 이론 후보만 계산했습니다.',
+    action:recommended?'익형 좌표와 제작 공정, 국부 좌굴 및 접합부를 검증하세요.':o.buildInputsReady?
+      '익형 t/c 증가 → 익근 시위 증가 → box/multi-spar 변경 → 재료 변경 → 날개 평면형 변경 순서로 재설계하세요.':
+      '캡 폭과 캡/웹 제작 최소두께를 입력해 현실적인 후보를 선별하세요.',scope:'optimization'});
+
   const structuralReady=sp.capAreaMm2!==null&&sp.webThicknessMm!==null;
-  add({title:'Structural Sizing · 구조 치수',status:sp.depthConflict?'FAIL':!structuralReady?'TBD':sp.localThicknessVerified?'PASS':'MARGINAL',
+  add({title:'기존 스파 단면 비교',status:sp.depthConflict?'MARGINAL':!structuralReady?'TBD':sp.localThicknessVerified?'PASS':'MARGINAL',
     value:structuralReady?`캡 필요 ≥ ${fmt(sp.capAreaMm2,2)} mm² · 웹 이론 최소 ≥ ${fmt(sp.webThicknessMm,3)} mm`:'스파 깊이 활용률 또는 날개 하중 경로 미정',
     criterion:`익근 최대두께 상한 ${fmt(sp.rootMaxThicknessMm,1)} mm · 사용 가능 깊이 ${sp.availableDepthMm===null?'TBD':fmt(sp.availableDepthMm,1)+' mm'}`,
     margin:sp.sizingDepthMm===null?'TBD':`사이징 깊이 ${fmt(sp.sizingDepthMm,1)} mm`,
@@ -29,13 +41,17 @@ AST.assessFeasibility = function(r){
   const budget=Object.entries(s.weightBudget),known=budget.filter(([,n])=>n!==null),missing=budget.filter(([,n])=>n===null).map(([key])=>AST.budgetLabels[key]);
   const total=known.reduce((sum,[,n])=>sum+n,0);
   const targetMargin=f.designTarget-total,limitMargin=f.mtowLimit-total;
-  add({title:'Weight · 중량 예산',status:total>f.mtowLimit?'FAIL':missing.length?'TBD':total>f.designTarget?'MARGINAL':'PASS',
+  const sparMass=(recommended||provisional)?.massKg??null;
+  const partialWithSpar=total+(s.weightBudget.wingStructure===null?(sparMass??0):0);
+  const sparExceedsWing=s.weightBudget.wingStructure!==null&&sparMass!==null&&sparMass>s.weightBudget.wingStructure;
+  const weightFail=partialWithSpar>f.mtowLimit||sparExceedsWing;
+  add({title:'Weight · 중량 예산',status:weightFail?'FAIL':missing.length?'TBD':total>f.designTarget?'MARGINAL':'PASS',
     value:`${missing.length?'Partial weight estimate':'전체 중량 합계'} ${fmt(total)} kg`,
     criterion:`설계 목표 ${fmt(f.designTarget)} kg · MTOW 상한 ${fmt(f.mtowLimit)} kg`,
-    margin:`현재 합계 기준 목표까지 ${targetMargin>=0?'+':''}${fmt(targetMargin)} kg · 상한까지 ${limitMargin>=0?'+':''}${fmt(limitMargin)} kg`,
-    cause:missing.length?`미입력: ${missing.join(', ')}. 현재 여유는 미입력 중량을 제외한 값입니다.`:'모든 중량 항목이 입력되었습니다. 경험식 결과를 자동으로 합산하지 않아 중복 계산을 피합니다.',
+    margin:`입력분 + 스파 기준 MTOW 잔여 ${fmt(f.mtowLimit-partialWithSpar,2)} kg${sparMass===null?' · 스파 질량 TBD':''}`,
+    cause:sparExceedsWing?'계산된 스파 질량이 입력된 전체 주익 구조중량보다 큽니다.':missing.length?`미입력: ${missing.join(', ')}. 현재 여유는 미입력 중량을 제외한 값입니다.`:'모든 중량 항목이 입력되었습니다. 경험식 결과를 자동으로 합산하지 않아 중복 계산을 피합니다.',
     action:missing.length?'미입력 구성품의 질량을 채워 전체 중량 예산을 완성하세요.':total>f.mtowLimit?'구성품 중량을 줄이거나 MTOW 상한을 재검토하세요.':'중량 예산과 실제 부품 목록을 대조하세요.',
-    baselineFail:total>f.mtowLimit});
+    baselineFail:weightFail});
 
   const selectedCap=s.sparDesign.selectedCapAreaMm2,selectedWeb=s.sparDesign.selectedWebThicknessMm;
   const capU=has(selectedCap)&&has(sp.capAreaMm2)?sp.capAreaMm2/selectedCap:null;
@@ -44,7 +60,7 @@ AST.assessFeasibility = function(r){
   const minWeb=s.sparDesign.manufacturingMinWebMm;
   const webBuildConflict=has(minWeb)&&has(selectedWeb)&&selectedWeb<minWeb;
   const strengthStatus=capU===null||webU===null?'TBD':Math.max(capU,webU)>1||webBuildConflict?'FAIL':Math.max(capU,webU)>0.8||!sp.localThicknessVerified||minWeb===null?'MARGINAL':'PASS';
-  add({title:'Strength · 캡/웹 강도',status:strengthStatus,
+  add({title:'기존 단면 Strength · 캡/웹',status:strengthStatus,
     value:`캡 U ${capU===null?'TBD':fmt(capU*100,1)+'%'} · 웹 U ${webU===null?'TBD':fmt(webU*100,1)+'%'}`,
     criterion:`허용응력 캡 ${fmt(s.material.capStress,0)} MPa · 웹 ${fmt(s.material.webStress,0)} MPa · U≤100%`,
     margin:`Margin of Safety: 캡 ${capMS===null?'TBD':fmt(capMS,2)} · 웹 ${webMS===null?'TBD':fmt(webMS,2)}`,
@@ -52,20 +68,20 @@ AST.assessFeasibility = function(r){
     action:strengthStatus==='FAIL'?'캡 면적 또는 웹 두께를 늘리고 허용응력을 검증하세요.':strengthStatus==='TBD'?'선정 캡 면적과 웹 두께를 입력하세요.':'선정 단면과 허용응력의 근거를 확인하세요.',
     scope:'structural'});
 
-  const def=f.tipDeflectionMm,allow=f.tipDeflectionLimitMm;
+  const def=recommended?.predictedDeflectionMm??null,allow=f.tipDeflectionLimitMm;
   const defRatio=has(def)&&has(allow)?def/allow:null;
   add({title:'Stiffness · 처짐',status:defRatio===null?'TBD':defRatio>1?'FAIL':defRatio>0.8?'MARGINAL':'PASS',
     value:`날개끝 처짐 ${has(def)?fmt(def,1)+' mm':'TBD'}`,criterion:`허용 처짐 ${has(allow)?fmt(allow,1)+' mm':'TBD'}`,
     margin:defRatio===null?'TBD':`${fmt(allow-def,1)} mm`,
-    cause:defRatio===null?'허용 처짐 기준 또는 EI/해석 처짐이 정의되지 않았습니다.':'입력한 해석/시험 처짐과 허용 기준을 비교했습니다.',
-    action:defRatio===null?'처짐 허용 기준을 정하고 구조 해석값을 입력하세요.':defRatio>1?'스파 강성을 높이거나 허용 기준과 운용 조건을 재검토하세요.':'EI와 처짐 해석의 근거를 확인하세요.',
+    cause:defRatio===null?'추천 단면의 탄성계수 E 또는 허용 처짐 기준이 정의되지 않았습니다.':'추천 단면의 EI와 반날개 모멘트 분포를 적분한 선형 보 근사입니다.',
+    action:defRatio===null?'탄성계수 E와 허용 처짐 기준을 입력하세요.':defRatio>1?'스파 강성을 높이거나 허용 기준과 운용 조건을 재검토하세요.':'EI와 처짐 해석의 근거를 확인하세요.',
     scope:'structural'});
 
   const depths=[s.sparDesign.requestedDepthMm,sp.requiredDepthMm].filter(has);
   const chosenDepth=depths.length?Math.max(...depths):null;
   const depthRatio=chosenDepth!==null&&sp.availableDepthMm!==null?chosenDepth/sp.availableDepthMm:null;
   const packagingStatus=sp.depthConflict?'FAIL':depthRatio===null||!sp.localThicknessVerified?'TBD':depthRatio>0.8?'MARGINAL':'PASS';
-  add({title:'Packaging · 스파 장착',status:packagingStatus,
+  add({title:'기존 단면 Packaging · 스파 장착',status:packagingStatus,
     value:`선정/강도상 필요 깊이 ${chosenDepth===null?'TBD':fmt(chosenDepth,1)+' mm'} · 사용 가능 깊이 ${sp.availableDepthMm===null?'TBD':fmt(sp.availableDepthMm,1)+' mm'}`,
     criterion:`익근 최대두께 절대 상한 ${fmt(sp.rootMaxThicknessMm,1)} mm`,
     margin:depthRatio===null?'TBD':`깊이 사용률 ${fmt(depthRatio*100,1)}%`,
@@ -94,7 +110,7 @@ AST.assessFeasibility = function(r){
     action:stall===null?'공력팀에서 항공기 CLmax를 확인하세요.':stall>f.stallSpeedLimit?'날개면적 또는 최대 양력 성능을 늘리세요.':'공력팀의 CLmax 근거와 형상 조건을 확인하세요.',
     baselineFail:stall!==null&&stall>f.stallSpeedLimit});
 
-  const critical=['sparDesign.depthFactor','sparDesign.localThicknessMm','feasibility.tipDeflectionLimitMm','feasibility.airfoilClMax'];
+  const critical=['sparDesign.localThicknessMm','sparDesign.capWidthMm','sparDesign.manufacturingMinCapMm','sparDesign.manufacturingMinWebMm','material.elasticModulusGPa','feasibility.tipDeflectionLimitMm','feasibility.airfoilClMax'];
   const incomplete=critical.filter(path=>AST.get(s,path)===null).concat(missing.map(name=>'중량: '+name));
   const assumptionCount=Object.values(s.sources).filter(x=>x==='ASSUMED').length;
   add({title:'Input Completeness · 근거',status:incomplete.length?'TBD':assumptionCount?'MARGINAL':'PASS',
@@ -103,10 +119,13 @@ AST.assessFeasibility = function(r){
     action:incomplete.length?'미확정 입력의 출처와 값을 확보하세요.':'ASSUMED 입력의 출처를 확인하세요.'});
 
   const baselineFail=cards.some(c=>c.baselineFail);
-  const structuralFail=cards.some(c=>c.status==='FAIL'&&c.scope==='structural');
   const hasBaseline=['aircraft.mass','wing.area','wing.ar','flight.speed','flight.rho'].every(path=>s.sources[path]==='INHA'||s.sources[path]==='REQ');
-  const verdict=baselineFail?'FAIL':structuralFail||badGeometry.length?'REVIEW REQUIRED':!hasBaseline?'INSUFFICIENT DATA':cards.some(c=>c.status==='TBD'||c.status==='MARGINAL')?'CONDITIONALLY FEASIBLE':'PASS';
-  const lead=baselineFail?'확인된 요구조건 위반이 있습니다.':structuralFail?'구조 설계안을 수정해야 합니다. Baseline 형상 실패로 해석하지 않습니다.':!hasBaseline?'핵심 외부 Baseline의 출처를 확인해야 합니다.':'Baseline 형상은 구조 설계와 추가 검증을 진행할 수 있습니다.';
+  const verdict=o.overall==='STRUCTURAL REDESIGN REQUIRED'?'STRUCTURAL REDESIGN REQUIRED':baselineFail?'FAIL':
+    !recommended?'INSUFFICIENT DATA':badGeometry.length?'REVIEW REQUIRED':!hasBaseline?'INSUFFICIENT DATA':
+    cards.some(c=>c.status==='TBD'||c.status==='MARGINAL')?'CONDITIONALLY FEASIBLE':'PASS';
+  const lead=verdict==='STRUCTURAL REDESIGN REQUIRED'?'No feasible spar solution within current wing geometry. 익형 두께·시위·스파 구조를 다시 검토하세요.':
+    baselineFail?'확인된 요구조건 위반이 있습니다.':!recommended?'제작 조건이 확정되기 전에는 이론 후보만 제시합니다.':
+    'Baseline structurally feasible with redesigned spar. 익형·강성·중량 조건을 추가 확인하세요.';
   return {cards,verdict,lead,actions,checks,budget:{total,missing,targetMargin,limitMargin},clReq};
 };
 AST.renderFeasibility=function(r){
