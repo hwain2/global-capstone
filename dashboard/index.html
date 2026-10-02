@@ -13,6 +13,7 @@
   <script src="js/calculations-weight.js" defer></script>
   <script src="js/calculations-loads.js" defer></script>
   <script src="js/calculations-spar.js" defer></script>
+  <script src="js/feasibility.js" defer></script>
   <script src="js/sensitivity.js" defer></script>
   <script src="js/aircraft-geometry.js" defer></script>
   <script src="js/load-visualization.js" defer></script>
@@ -23,11 +24,11 @@
 </head>
 <body>
   <header class="site-header" id="overview">
-    <div class="brand"><span class="brand-mark">A<span>∕</span>S</span><div><h1>항공기 구조 설계 도구</h1></div></div>
+    <div class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 64 64" fill="none"><path d="M32 5c-2.2 0-4 1.8-4 4v20L8 39v6l20-5v10l-7 5v4l11-3 11 3v-4l-7-5V40l20 5v-6L36 29V9c0-2.2-1.8-4-4-4Z" fill="currentColor"/></svg></span><div><h1>항공기 구조 설계 도구</h1></div></div>
     <p>중량 · 하중 · 스파 · 민감도</p>
   </header>
   <nav class="section-nav" aria-label="화면 구역">
-    <a href="#overview">개요</a><a href="#inputs">입력값</a><a href="#geometry">3D 형상</a><a href="#weight">중량</a><a href="#loads">하중</a><a href="#spar">스파</a><a href="#sensitivity">민감도</a><a href="#summary">요약·내보내기</a>
+    <a href="#overview">개요</a><a href="#inputs">입력값</a><a href="#geometry">3D 형상</a><a href="#weight">중량</a><a href="#loads">하중</a><a href="#spar">스파</a><a href="#sensitivity">민감도</a><a href="#summary">요약·내보내기</a><a href="#feasibility">Baseline 판정</a>
   </nav>
   <main class="page">
     <div id="validation" class="validation" role="alert" hidden></div>
@@ -44,6 +45,7 @@
     <section class="panel chart-section"><div class="panel-head"><div><span class="eyebrow">06 / 반날개 구간</span><h2>하중 선도</h2></div><span class="chip">타원 양력분포</span></div><div class="chart-grid"><div><h3>날개폭 방향 양력</h3><div id="liftPlot" class="chart"></div></div><div><h3>전단력</h3><div id="shearPlot" class="chart"></div></div><div><h3>굽힘모멘트</h3><div id="momentPlot" class="chart"></div></div></div></section>
     <section id="sensitivity" class="panel sensitivity-panel"><div class="panel-head"><div><span class="eyebrow">07 / 변수 분석</span><h2>민감도</h2></div></div><div class="sensitivity-controls"><label>계산식<select id="sensitivityEquation"></select></label><label>변수<select id="sensitivityVariable"></select></label><label>변화 범위<select id="sensitivityRange"><option value="10">±10%</option><option value="20">±20%</option><option value="30">±30%</option><option value="custom">직접 입력</option></select></label><label id="customRangeWrap" hidden>직접 입력 범위 [%]<input id="customRange" type="number" min="1" max="80" step="1" value="20"></label></div><div class="sensitivity-grid"><div><h3>변수 변화에 따른 결과</h3><div id="sensitivityCurve" class="chart tall"></div></div><div><h3>국소 민감도 크기</h3><div id="sensitivityBars" class="chart tall"></div></div></div><div class="table-scroll"><table><thead><tr><th>변수</th><th>기준 입력값</th><th>민감도 지수</th><th>방향</th><th>−20% 결과</th><th>기준 결과</th><th>+20% 결과</th></tr></thead><tbody id="sensitivityTable"></tbody></table></div></section>
     <section id="summary" class="panel summary-panel"><div class="panel-head"><div><span class="eyebrow">08 / 설계안</span><h2>요약·내보내기</h2></div></div><div class="summary-actions"><button id="downloadCSV" class="primary-button" type="button">결과 CSV</button><button id="saveJSON" type="button">입력값 저장</button><label class="file-button">입력값 불러오기<input id="loadJSON" type="file" accept="application/json,.json"></label><button id="downloadText" type="button">요약 텍스트</button><button id="downloadPNG" type="button">3D PNG</button></div><p id="importStatus" class="micro" role="status"></p><div id="summaryTable" class="table-scroll"></div></section>
+    <section id="feasibility" class="panel feasibility-panel"><div class="panel-head"><div><span class="eyebrow">09 / Baseline Feasibility</span><h2>기준 형상 가능성 판정</h2></div><span class="chip">PASS · MARGINAL · FAIL · TBD</span></div><div id="feasibilityVerdict" class="feasibility-summary" role="status"></div><div id="feasibilityCards" class="feasibility-grid"></div><details class="feasibility-evidence"><summary>판정에 필요한 추가 입력</summary><p class="micro">확인되지 않은 값은 비워 두세요. 입력한 값의 출처는 각 항목에서 선택할 수 있습니다.</p><div id="feasibilityInputs" class="feasibility-inputs"></div></details><div class="feasibility-footer"><div><h3>권장 조치</h3><ol id="feasibilityActions"></ol></div><div><h3>입력 신뢰도</h3><div id="inputConfidence" class="confidence"></div><h3>핵심 가정</h3><ul id="criticalAssumptions" class="assumption-list"></ul></div></div></section>
   </main>
 </body>
 </html>
