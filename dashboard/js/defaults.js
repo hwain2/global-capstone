@@ -2,41 +2,44 @@ window.AST = window.AST || {};
 AST.defaults = {
   presetLocked: false,
   aircraft: { mass: 25, nLimit: 3.8, fs: 1.5, g: 9.80665 },
-  wing: { area: 1.8, span: 3.6, autoAR: true, ar: 7.2, autoChords: true, rootChord: 0.68, tipChord: 0.32, mac: 0.52, taper: 0.47, sweep: 8, quarterSweep: 5, tc: 0.12 },
-  fuselage: { length: 1.35, width: 0.34, height: 0.38, wettedArea: 2.1, ld: 4, lt: 0.85 },
-  flight: { speed: 22, rho: 1.225, autoQ: true, q: 296.45, gustSpeed: 7.5, liftSlope: 5.4, muG: 10 },
+  wing: { area: 1.8, span: 3.6, autoAR: true, ar: 7.2, autoChords: true, rootChord: 0.68, tipChord: 0.32, mac: 0.52, equivChord: 0.5, taper: 0.47, sweep: 8, quarterSweep: 5, tc: 0.12 },
+  fuselage: { length: 1.35, width: 0.34, height: 0.38, wettedArea: 2.1, ld: 3.75, lt: 0.85 },
+  flight: { speed: 22, rho: 1.225, q: 296.45, cruiseCL: null, ld: null, gustSpeed: 7.5, liftSlope: 5.4, muG: 10 },
   landing: { drop: 0.3, stop: 0.08 },
-  material: { density: 1600, krw: 1, krf: 1, kinlet: 1, pmax: 1, capStress: 300, webStress: 80, capHeight: 90, webHeight: 100 },
-  design: { source: 'ultimate', customLoad: 1000 },
-  feasibility: { mtowLimit: 24.9, estimatedMTOW: null, actualCapAreaMm2: null, actualWebThicknessMm: null, tipDeflectionMm: null, tipDeflectionLimitMm: null, stallSpeedLimit: 17, airfoilClMax: null },
+  material: { density: 1600, krw: 1, krf: 1, kinlet: 1, pmax: 1, capStress: 300, webStress: 80 },
+  sparDesign: { depthFactor: null, localThicknessMm: null, requestedDepthMm: null, selectedCapAreaMm2: null, selectedWebThicknessMm: null, manufacturingMinWebMm: null },
+  design: { source: 'ultimate', customLoad: null },
+  feasibility: { mtowLimit: 24.9, designTarget: 22.4, tipDeflectionMm: null, tipDeflectionLimitMm: null, stallSpeedLimit: 17, airfoilClMax: null },
+  weightBudget: { wingStructure: null, fuselageStructure: null, tailStructure: null, landingGear: null, propulsion: null, battery: null, avionics: null, wiring: null, payload: null, other: null },
   sources: {},
   display: { aircraft: true, lift: true, weight: true, shear: true, moment: true, gust: false, impact: false, spar: true, cg: true, dimensions: false },
-  sensitivity: { equation: 'sparCap', variable: 'wing.span', range: 20 }
+  sensitivity: { equation: 'raymerWing', variable: 'wing.span', range: 20 }
 };
 AST.inhaTwoProp = {
-  lockedPaths: ['aircraft.mass','aircraft.g','wing.area','wing.autoAR','wing.span','wing.ar','flight.speed','flight.rho','flight.autoQ','flight.q']
+  referenceSpan: 2.98,
+  referenceEquivalentChord: 0.248,
+  lockedPaths: ['aircraft.mass','aircraft.g','wing.area','wing.autoAR','wing.span','wing.ar','wing.equivChord','flight.speed','flight.rho','flight.q','flight.cruiseCL','flight.ld','feasibility.mtowLimit','feasibility.designTarget']
 };
 AST.clone = value => JSON.parse(JSON.stringify(value));
+AST.trapezoidMAC = (root,tip) => root > 0 && tip > 0 ? (2/3)*root*(1+tip/root+(tip/root)**2)/(1+tip/root) : NaN;
 AST.resolve = function (state) {
-  const s = AST.clone(state);
-  if (s.wing.autoAR) s.wing.ar = s.wing.span * s.wing.span / s.wing.area;
-  else s.wing.span = Math.sqrt(s.wing.area * s.wing.ar);
-  if (s.wing.autoChords) {
-    const root = 2 * s.wing.area / (s.wing.span * (1 + s.wing.taper));
-    s.wing.rootChord = root;
-    s.wing.tipChord = root * s.wing.taper;
-    s.wing.mac = (2 / 3) * root * (1 + s.wing.taper + s.wing.taper ** 2) / (1 + s.wing.taper);
-  }
-  if (s.flight.autoQ) s.flight.q = 0.5 * s.flight.rho * s.flight.speed * s.flight.speed;
+  const s=AST.clone(state),w=s.wing,f=s.fuselage;
+  if(w.autoAR)w.ar=w.span*w.span/w.area;
+  else w.span=Math.sqrt(w.area*w.ar);
+  if(w.autoChords){w.rootChord=2*w.area/(w.span*(1+w.taper));w.tipChord=w.rootChord*w.taper;}
+  else w.taper=w.tipChord/w.rootChord;
+  w.mac=AST.trapezoidMAC(w.rootChord,w.tipChord);
+  w.equivChord=w.area/w.span;
+  s.flight.q=0.5*s.flight.rho*s.flight.speed*s.flight.speed;
+  f.ld=f.length/((f.width+f.height)/2);
   return s;
 };
 AST.synchronize = function (state) {
-  const resolved = AST.resolve(state);
-  state.wing.span = resolved.wing.span;
-  state.wing.ar = resolved.wing.ar;
-  if (state.wing.autoChords) for (const key of ['rootChord','tipChord','mac']) state.wing[key] = resolved.wing[key];
-  if (state.flight.autoQ) state.flight.q = resolved.flight.q;
+  const resolved=AST.resolve(state);
+  for(const key of ['span','ar','rootChord','tipChord','taper','mac','equivChord'])state.wing[key]=resolved.wing[key];
+  state.flight.q=resolved.flight.q;
+  state.fuselage.ld=resolved.fuselage.ld;
   return state;
 };
-AST.get = (obj, path) => path.split('.').reduce((a, k) => a && a[k], obj);
+AST.get = (obj, path) => path.split('.').reduce((a, k) => a==null?undefined:a[k], obj);
 AST.set = (obj, path, value) => { const p = path.split('.'); obj[p[0]][p[1]] = value; };
