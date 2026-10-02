@@ -40,7 +40,7 @@ AST.assessFeasibility = function (r) {
   cards.push({title:'Stiffness · 처짐',status:defRatio===null?'TBD':defRatio>1?'FAIL':defRatio>0.8?'MARGINAL':'PASS',lines:[`날개끝 처짐 ${def===null?'TBD':fmt(def,1)+' mm'} · 허용 ${defLimit===null?'TBD':fmt(defLimit,1)+' mm'}`],note:'예상 처짐은 별도 해석·시험값을 입력합니다. 허용 기준이 없으면 합격 판정하지 않습니다.'});
   if(defRatio===null)actions.push('날개끝 처짐 해석값과 허용 기준을 확정하세요.');
 
-  cards.push({title:'Flight Load · 지배 하중',status:loadStatus,lines:[`날개 지배 조건 ${maneuver>=gust?'극한 기동':'극한 돌풍'} · ${fmt(governing,0)} N`,`극한 기동 ${fmt(maneuver,0)} N · 극한 돌풍 ${fmt(gust,0)} N`,`현재 스파 설계 ${fmt(selected,0)} N · 루트 모멘트 ${fmt(spar.rootMoment,1)} N·m`,`착륙 평균 충격력 ${fmt(loads.impact,0)} N (별도 하중 경로)`],note:'기동과 돌풍을 동일한 극한하중 기준으로 비교합니다. 착륙 하중은 날개 양력과 직접 비교하지 않습니다.'});
+  cards.push({title:'Flight Load · 지배 하중',status:loadStatus,lines:[`날개 지배 조건 ${maneuver>=gust?'극한 기동':'극한 양의 돌풍'} · ${fmt(governing,0)} N`,`극한 기동 ${fmt(maneuver,0)} N · 극한 양의 돌풍 ${fmt(gust,0)} N`,`현재 스파 설계 ${fmt(selected,0)} N · 루트 모멘트 ${fmt(spar.rootMoment,1)} N·m`,`착륙 평균 충격력 ${fmt(loads.impact,0)} N (별도 하중 경로)`],note:'기동과 양의 돌풍을 같은 극한하중 기준으로 비교합니다. 음의 돌풍과 착륙 하중 경로는 별도로 검토해야 합니다.'});
   if(loadStatus==='FAIL')actions.push('스파 설계 하중을 날개 지배 하중 이상으로 선택하세요.');
 
   const clRequired=2*loads.weight/(s.flight.rho*w.area*f.stallSpeedLimit**2);

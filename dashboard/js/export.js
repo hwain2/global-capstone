@@ -10,10 +10,14 @@ AST.exportCSV = function (r) {
     const value=d.read(r);
     rows.push([d.section,d.label,Number.isFinite(value)?String(value):'',d.unit,d.status||'계산값']);
   });
+  const assessment=AST.assessFeasibility(r);
+  rows.push(['Baseline Feasibility','종합 판정',assessment.verdict,'',assessment.lead]);
+  assessment.cards.forEach(card=>rows.push(['Baseline Feasibility',card.title,card.status,'',card.lines.join(' · ')+' · '+card.note]));
   const csv=rows.map(row=>row.map(v=>'"'+String(v).replaceAll('"','""')+'"').join(',')).join('\r\n');
   AST.download('항공기-계산결과.csv','\uFEFF'+csv,'text/csv;charset=utf-8');
 };
 AST.exportText = function (r) {
-  const body=['항공기 구조 설계 도구','',...AST.resultDefs.map(d=>`${d.section} / ${d.label}: ${AST.fmt(d.read(r),4)} ${d.unit}${d.status?' ['+d.status+']':''}`)].join('\n');
+  const assessment=AST.assessFeasibility(r);
+  const body=['항공기 구조 설계 도구','',...AST.resultDefs.map(d=>`${d.section} / ${d.label}: ${AST.fmt(d.read(r),4)} ${d.unit}${d.status?' ['+d.status+']':''}`),'','Baseline Feasibility: '+assessment.verdict,assessment.lead,...assessment.cards.map(card=>`${card.title}: ${card.status} · ${card.lines.join(' · ')}`),'','권장 조치',...assessment.actions.map((action,i)=>`${i+1}. ${action}`)].join('\n');
   AST.download('항공기-요약.txt',body,'text/plain;charset=utf-8');
 };
