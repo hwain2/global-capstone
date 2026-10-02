@@ -37,7 +37,7 @@ AST.inputSteps = Object.freeze({
 });
 AST.feasibilityFields = [
   ['feasibility.mtowLimit','MTOW 상한','kg'],['feasibility.designTarget','설계중량 목표','kg'],
-  ['feasibility.tipDeflectionMm','예상 날개끝 처짐','mm'],['feasibility.tipDeflectionLimitMm','허용 날개끝 처짐','mm'],
+  ['feasibility.tipDeflectionLimitMm','허용 날개끝 처짐','mm'],
   ['feasibility.stallSpeedLimit','실속속도 상한','m/s'],['feasibility.airfoilClMax','항공기 CLmax','—']
 ];
 AST.budgetFields=Object.entries(AST.budgetLabels).map(([key,label])=>['weightBudget.'+key,label,'kg']);

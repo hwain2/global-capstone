@@ -15,7 +15,7 @@ AST.optimizeSpar = function(s, loads) {
   };
   const availableRootMm=thicknessAt(0).thicknessMm*d.depthFactor;
   const buildInputsReady=d.capWidthMm!==null&&d.manufacturingMinCapMm!==null&&d.manufacturingMinWebMm!==null;
-  const verifiedThickness=d.localThicknessMm!==null;
+  const verifiedThickness=d.localThicknessMm!==null&&d.localThicknessMm<=rootMaxThicknessMm;
   const modulusReady=mat.elasticModulusGPa!==null;
   const deflectionLimit=s.feasibility.tipDeflectionLimitMm;
   const count=19,candidates=[];
@@ -65,6 +65,8 @@ AST.optimizeSpar = function(s, loads) {
     const massKg=2*(upper+lower+web),theoreticalMassKg=2*(2*theoreticalUpper+theoreticalWeb);
     const predictedDeflectionMm=modulusReady?deflection:null;
     const strengthPass=minCapMS>=-1e-9&&minWebMS>=-1e-9;
+    if(Math.abs(minCapMS)<1e-9)minCapMS=0;
+    if(Math.abs(minWebMS)<1e-9)minWebMS=0;
     const stiffnessPass=predictedDeflectionMm===null||deflectionLimit===null?null:predictedDeflectionMm<=deflectionLimit;
     const eligible=verifiedThickness&&packaging&&strengthPass&&buildInputsReady&&stiffnessPass!==false;
     candidates.push({index:i,fraction,depthMm,availableRootMm,rootCapAreaMm2:rootCapArea,
