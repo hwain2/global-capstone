@@ -22,14 +22,27 @@ AST.inputSteps = Object.freeze({
   'material.kinlet':0.01, 'material.pmax':0.01,
   'material.capStress':2, 'material.webStress':1,
   'material.capHeight':0.5, 'material.webHeight':0.5,
-  'design.customLoad':5
+  'design.customLoad':5,
+  'feasibility.mtowLimit':0.1, 'feasibility.estimatedMTOW':0.1,
+  'feasibility.actualCapAreaMm2':0.1, 'feasibility.actualWebThicknessMm':0.01,
+  'feasibility.tipDeflectionMm':0.5, 'feasibility.tipDeflectionLimitMm':0.5,
+  'feasibility.stallSpeedLimit':0.1, 'feasibility.airfoilClMax':0.01
 });
-AST.fieldLabel = function(path){if(path==='design.customLoad')return '사용자 지정 총양력';for(const g of AST.fields)for(const [p,label] of g.items)if(p===path)return label;return path;};
+AST.feasibilityFields = [
+  ['feasibility.mtowLimit','MTOW 상한','kg'],['feasibility.estimatedMTOW','예상 MTOW','kg'],
+  ['feasibility.actualCapAreaMm2','선정 캡 면적','mm²'],['feasibility.actualWebThicknessMm','선정 웹 두께','mm'],
+  ['feasibility.tipDeflectionMm','예상 날개끝 처짐','mm'],['feasibility.tipDeflectionLimitMm','허용 날개끝 처짐','mm'],
+  ['feasibility.stallSpeedLimit','실속속도 상한','m/s'],['feasibility.airfoilClMax','항공기 CLmax','—']
+];
+AST.fieldLabel = function(path){if(path==='design.customLoad')return '사용자 지정 총양력';for(const [p,label] of AST.feasibilityFields)if(p===path)return label;for(const g of AST.fields)for(const [p,label] of g.items)if(p===path)return label;return path;};
+AST.isDerived = path => path==='wing.span'?!AST.state.wing.autoAR:path==='wing.ar'?AST.state.wing.autoAR:path==='flight.q'?AST.state.flight.autoQ:['wing.rootChord','wing.tipChord','wing.mac'].includes(path)&&AST.state.wing.autoChords;
+AST.sourceFor = path => AST.isDerived(path)?'CALC':AST.get(AST.state,path)===null?'TBD':AST.state.sources[path]||({'feasibility.mtowLimit':'INHA','feasibility.stallSpeedLimit':'REQ'}[path]||'ASSUMED');
+AST.sourceOptions = path => `<select class="source-select" data-source-path="${path}" aria-label="${AST.escape(AST.fieldLabel(path))} 입력 출처" ${AST.get(AST.state,path)===null?'disabled':''}>${['INHA','REQ','ASSUMED','TBD'].map(v=>`<option value="${v}" ${AST.sourceFor(path)===v?'selected':''}>${v}</option>`).join('')}</select>`;
 AST.resultDefs = [
-  {section:'기체',label:'최대이륙질량',unit:'kg',read:r=>r.state.aircraft.mass,equation:'사용자 입력값: 최대이륙질량 [kg].'},
-  {section:'기체',label:'날개폭',unit:'m',read:r=>r.state.wing.span,equation:'사용자 입력값: 날개폭 b [m].'},
-  {section:'기체',label:'날개 면적',unit:'m²',read:r=>r.state.wing.area,equation:'사용자 입력값: 날개 면적 S [m²].'},
-  {section:'기체',label:'가로세로비',unit:'—',read:r=>r.state.wing.ar,equation:'날개폭 입력 시 AR = b² / S, AR 입력 시 b = √(AR × S).'},
+  {section:'기체',label:'최대이륙질량',unit:'kg',read:r=>r.state.aircraft.mass,equation:'사용자 입력값: 최대이륙질량 [kg].',status:'입력값'},
+  {section:'기체',label:'날개폭',unit:'m',read:r=>r.state.wing.span,equation:'사용자 입력값 또는 AR에서 계산: 날개폭 b [m].',status:'입력·계산값'},
+  {section:'기체',label:'날개 면적',unit:'m²',read:r=>r.state.wing.area,equation:'사용자 입력값: 날개 면적 S [m²].',status:'입력값'},
+  {section:'기체',label:'가로세로비',unit:'—',read:r=>r.state.wing.ar,equation:'날개폭 입력 시 AR = b² / S, AR 입력 시 b = √(AR × S).',status:'입력·계산값'},
   {section:'중량',label:'Finger 공허중량',unit:'kg',read:r=>r.weight.finger,equation:'We = 0.699 × MTOW^0.949. MTOW와 We는 kg.',status:'전체 공허중량'},
   {section:'중량',label:'Raymer 주익',unit:'kg',read:r=>r.weight.raymerWing,equation:'Ww = 0.036 Sw^0.758 Wfw^0.0035 (AR/cos²Λ)^0.6 q^0.006 λ^0.04 [100(t/c)/cosΛ]^−0.3 (Nult Wdg)^0.49. Sw는 ft², q는 psf, Wdg는 lb; 결과 lb를 kg으로 변환. 날개 내 연료 없음: Wfw = 1.',status:'경험식'},
   {section:'중량',label:'Sadraey 주익 식 값',unit:'참고값',read:r=>r.weight.sadraeyWing,equation:'Wwing = S c̄ (t/c)max ρmat Kρ,w [AR nult / cosΛc/4]^0.6 λ^0.04 g. 원문 식에 SI 입력값을 그대로 대입.',status:'계수·단위 검증 필요'},
@@ -43,10 +56,11 @@ AST.resultDefs = [
   {section:'하중',label:'돌풍 하중계수 증가량 Δn',unit:'g',read:r=>r.loads.deltaN,equation:'Δn = Kg ρ Ude V a / [2(W/S)].'},
   {section:'하중',label:'양의 돌풍 하중계수',unit:'g',read:r=>r.loads.gustPlus,equation:'n gust+ = 1 + Δn.'},
   {section:'하중',label:'음의 돌풍 하중계수',unit:'g',read:r=>r.loads.gustMinus,equation:'n gust− = 1 − Δn.'},
-  {section:'하중',label:'양의 돌풍 등가하중',unit:'N',read:r=>r.loads.gustPlusLoad,equation:'L gust+ = n gust+ × W.'},
+  {section:'하중',label:'양의 돌풍 제한하중',unit:'N',read:r=>r.loads.gustPlusLoad,equation:'L gust,limit = n gust+ × W.'},
+  {section:'하중',label:'양의 돌풍 극한하중',unit:'N',read:r=>r.loads.gustUltimate,equation:'L gust,ultimate = FS × n gust+ × W.'},
   {section:'하중',label:'음의 돌풍 등가하중',unit:'N',read:r=>r.loads.gustMinusLoad,equation:'L gust− = n gust− × W. 부호를 유지한 값.'},
   {section:'하중',label:'평균 착륙 충격력',unit:'N',read:r=>r.loads.impact,equation:'Favg = m g (1 + h/s).'},
-  {section:'스파',label:'선택한 설계 총양력',unit:'N',read:r=>r.spar.load,equation:'극한 하중, 양의 돌풍 하중 또는 사용자 지정 총양력 중 선택.'},
+  {section:'스파',label:'선택한 설계 총양력',unit:'N',read:r=>r.spar.load,equation:'극한 기동하중, 극한 돌풍하중 또는 사용자 지정 총양력 중 선택.'},
   {section:'스파',label:'루트 전단력',unit:'N',read:r=>r.spar.rootShear,equation:'각 반날개에서 Vroot = L / 2.'},
   {section:'스파',label:'루트 굽힘모멘트',unit:'N·m',read:r=>r.spar.rootMoment,equation:'타원 양력분포에서 Mroot = L b / (3π).'},
   {section:'스파',label:'필요 캡 면적',unit:'mm²',read:r=>r.spar.capAreaMm2,equation:'Acap ≥ |Mroot| / (σallow hs). MPa와 mm를 SI로 변환해 계산한 뒤 m²를 mm²로 변환.'},
@@ -63,14 +77,19 @@ AST.fieldHTML = function([path,label,unit],advanced) {
   if(path==='wing.autoAR')return `<label class="field"><span>${AST.escape(label)}</span><select data-path="wing.autoAR" ${locked?'disabled':''}><option value="span" ${val?'selected':''}>날개폭 입력 · AR 자동 계산</option><option value="ar" ${val?'':'selected'}>AR 입력 · 날개폭 자동 계산</option></select></label>`;
   if(boolean)return `<label class="check-field"><input type="checkbox" data-path="${path}" ${val?'checked':''} ${locked?'disabled':''}><span>${AST.escape(label)}</span></label>`;
   const step=AST.inputSteps[path] ?? 'any';
-  return `<label class="field"><span>${AST.escape(label)}${advanced || path==='fuselage.lt' ? '<span class="verify-icon"'+tip+'>?</span>':''}</span><span class="input-unit"><input type="number" inputmode="decimal" data-path="${path}" step="${step}" value="${AST.escape(val)}" title="증감 단위: ${step} ${AST.escape(unit)}" ${locked?'readonly':''}><em>${AST.escape(unit)}</em></span></label>`;
+  const optional=path.startsWith('feasibility.')&&!['feasibility.mtowLimit','feasibility.stallSpeedLimit'].includes(path), derived=AST.isDerived(path);
+  return `<div class="field"><label for="input-${path}">${AST.escape(label)}${advanced || path==='fuselage.lt' ? '<span class="verify-icon"'+tip+'>?</span>':''}</label><span class="input-unit"><input id="input-${path}" type="number" inputmode="decimal" data-path="${path}" step="${step}" value="${val===null?'':AST.escape(val)}" placeholder="${optional?'미입력 · TBD':''}" title="증감 단위: ${step} ${AST.escape(unit)}" ${locked?'readonly':''}><em>${AST.escape(unit)}</em></span><div class="field-source"><span>출처</span>${derived?'<span class="source-badge">CALC</span>':AST.sourceOptions(path)}</div></div>`;
 };
 AST.buildInputs = function() {
   document.getElementById('inputGroups').innerHTML=AST.fields.map(g=>`<details class="input-group" ${g.advanced?'':'open'}><summary>${AST.escape(g.group)} <span>${g.items.length}</span></summary><div class="fields">${g.items.map(x=>AST.fieldHTML(x,g.advanced)).join('')}</div>${g.group==='주익'?'<p id="wingConsistency" class="micro wing-consistency" role="status"></p>':''}</details>`).join('')+
-  `<details class="input-group" open><summary>스파 설계 하중 <span>2</span></summary><div class="fields"><label class="field"><span>하중 조건</span><select data-path="design.source"><option value="ultimate">극한 하중</option><option value="gust">양의 돌풍 하중</option><option value="custom">사용자 지정 하중</option></select></label>${AST.fieldHTML(['design.customLoad','사용자 지정 총양력','N'],false)}</div></details>`;
+  `<details class="input-group" open><summary>스파 설계 하중 <span>2</span></summary><div class="fields"><label class="field"><span>하중 조건</span><select data-path="design.source"><option value="ultimate">극한 기동하중</option><option value="gust">극한 돌풍하중</option><option value="custom">사용자 지정 하중</option></select></label>${AST.fieldHTML(['design.customLoad','사용자 지정 총양력','N'],false)}</div></details>`;
   const container=document.getElementById('inputGroups');
   container.oninput=AST.onInput;
   container.onchange=AST.onInput;
+  const feasibility=document.getElementById('feasibilityInputs');
+  feasibility.innerHTML=AST.feasibilityFields.map(x=>AST.fieldHTML(x,false)).join('');
+  feasibility.oninput=AST.onInput;
+  feasibility.onchange=AST.onInput;
 };
 AST.applyInhaPreset = function() {
   const next=AST.clone(AST.defaults);
@@ -83,6 +102,8 @@ AST.applyInhaPreset = function() {
   next.flight.speed=30.71;
   next.flight.rho=1;
   next.flight.autoQ=true;
+  for(const path of ['aircraft.mass','aircraft.g','wing.area','wing.ar','flight.speed','flight.rho','feasibility.mtowLimit'])next.sources[path]='INHA';
+  next.sources['feasibility.stallSpeedLimit']='REQ';
   next.sensitivity.variable='wing.ar';
   next.presetLocked=true;
   AST.state=AST.synchronize(next);
@@ -91,7 +112,9 @@ AST.applyInhaPreset = function() {
   document.getElementById('presetStatus').textContent='인하대 기준값 적용 · 잠금 중';
 };
 AST.onInput = function(e) {
-  const el=e.target,path=el.dataset.path;if(!path)return;
+  const el=e.target;
+  if(el.dataset.sourcePath){AST.state.sources[el.dataset.sourcePath]=el.value;AST.render();return;}
+  const path=el.dataset.path;if(!path)return;
   if(AST.state.presetLocked && AST.inhaTwoProp.lockedPaths.includes(path))return;
   if(path==='wing.autoAR') {
     const current=AST.resolve(AST.state).wing;
@@ -103,9 +126,14 @@ AST.onInput = function(e) {
     for(const key of ['rootChord','tipChord','mac'])AST.state.wing[key]=current[key];
   }
   if(path==='flight.autoQ' && !el.checked) AST.state.flight.q=AST.resolve(AST.state).flight.q;
-  const value=path==='wing.autoAR'?el.value==='span':el.type==='checkbox'?el.checked:el.tagName==='SELECT'?el.value:el.value.trim()===''?NaN:Number(el.value);
+  const value=path==='wing.autoAR'?el.value==='span':el.type==='checkbox'?el.checked:el.tagName==='SELECT'?el.value:el.value.trim()===''?(path.startsWith('feasibility.')?null:NaN):Number(el.value);
   AST.set(AST.state,path,value);
+  if(el.type==='number'&&!AST.isDerived(path)){
+    AST.state.sources[path]=value===null?'TBD':'ASSUMED';
+    const sourceEl=document.querySelector(`[data-source-path="${path}"]`);if(sourceEl){sourceEl.value=AST.state.sources[path];sourceEl.disabled=value===null;}
+  }
   AST.synchronize(AST.state);
+  if(['wing.autoAR','wing.autoChords','flight.autoQ'].includes(path))AST.buildInputs();
   const presetStatus=document.getElementById('presetStatus');
   if(presetStatus.textContent && !AST.state.presetLocked) presetStatus.textContent='기준값 적용 후 수정됨';
   AST.render();
@@ -122,7 +150,7 @@ AST.renderResults = function(r) {
   document.getElementById('overviewCards').innerHTML=[
     ['최대이륙질량',r.state.aircraft.mass,'kg'],['날개폭',r.state.wing.span,'m'],['극한 양력',r.loads.ultimate,'N'],['필요 캡 면적',r.spar.capAreaMm2,'mm²']
   ].map(([label,v,unit])=>`<div class="overview-card"><span>${label}</span><strong>${AST.fmt(v)} <small>${unit}</small></strong></div>`).join('');
-  const rows=AST.resultDefs.map(d=>`<tr><td>${AST.escape(d.section)}</td><td>${AST.escape(d.label)}</td><td>${AST.fmt(d.read(r),4)}</td><td>${AST.escape(d.unit)}</td><td>${AST.escape(d.status||'초기 추정값')}</td><td><details class="equation"><summary>계산식 보기</summary><code>${AST.escape(d.equation)}</code></details></td></tr>`).join('');
+  const rows=AST.resultDefs.map(d=>`<tr><td>${AST.escape(d.section)}</td><td>${AST.escape(d.label)}</td><td>${AST.fmt(d.read(r),4)}</td><td>${AST.escape(d.unit)}</td><td>${AST.escape(d.status||'계산값')}</td><td><details class="equation"><summary>계산식 보기</summary><code>${AST.escape(d.equation)}</code></details></td></tr>`).join('');
   document.getElementById('summaryTable').innerHTML=`<table><thead><tr><th>구분</th><th>결과</th><th>값</th><th>단위</th><th>해석</th><th>계산식</th></tr></thead><tbody>${rows}</tbody></table>`;
 };
 AST.renderToggles = function(){
@@ -175,7 +203,7 @@ AST.render = function() {
   if(r.errors.length){
     AST.lastResult=null;
     document.getElementById('loadSelection').hidden=true;
-    ['weightResults','loadResults','sparResults','summaryTable','overviewCards','sensitivityTable'].forEach(id=>document.getElementById(id).innerHTML='<p class="muted">입력값을 수정하면 결과를 계산합니다.</p>');
+    ['weightResults','loadResults','sparResults','summaryTable','overviewCards','sensitivityTable','feasibilityVerdict','feasibilityCards','feasibilityActions','inputConfidence','criticalAssumptions'].forEach(id=>document.getElementById(id).innerHTML='<p class="muted">입력값을 수정하면 결과를 계산합니다.</p>');
     for(const id of ['aircraftPlot','liftPlot','shearPlot','momentPlot','sensitivityCurve','sensitivityBars']){
       const target=document.getElementById(id);
       if(window.Plotly && target.data)Plotly.purge(target);
@@ -183,20 +211,24 @@ AST.render = function() {
     }
     return;
   }
-  AST.lastResult=r;AST.renderResults(r);AST.render3D(resolved,r);AST.renderCharts(r,resolved);AST.renderSensitivityUI();
+  AST.lastResult=r;AST.renderResults(r);AST.renderFeasibility(r);AST.render3D(resolved,r);AST.renderCharts(r,resolved);AST.renderSensitivityUI();
 };
 AST.sanitizeImported = function(input){
   if(!input || typeof input!=='object')throw Error('JSON에는 객체가 있어야 합니다.');
   const next=AST.clone(AST.defaults);
-  for(const group of ['aircraft','wing','fuselage','flight','landing','material','design','display','sensitivity']) {
+  for(const group of ['aircraft','wing','fuselage','flight','landing','material','design','display','sensitivity','feasibility']) {
     if(!input[group]||typeof input[group]!=='object')continue;
     for(const key of Object.keys(next[group])){
       if(!(key in input[group]))continue;
       const defaultValue=next[group][key],value=input[group][key];
       if(typeof defaultValue==='number' && typeof value==='number' && Number.isFinite(value))next[group][key]=value;
+      else if(defaultValue===null && (value===null || typeof value==='number' && Number.isFinite(value)))next[group][key]=value;
       else if(typeof defaultValue==='boolean' && typeof value==='boolean')next[group][key]=value;
       else if(typeof defaultValue==='string' && typeof value==='string')next[group][key]=value;
     }
+  }
+  if(input.sources && typeof input.sources==='object')for(const [path,source] of Object.entries(input.sources)){
+    if(['INHA','REQ','ASSUMED','TBD'].includes(source) && (AST.fields.some(g=>g.items.some(x=>x[0]===path))||AST.feasibilityFields.some(x=>x[0]===path)||path==='design.customLoad'))next.sources[path]=source;
   }
   if(!['ultimate','gust','custom'].includes(next.design.source))next.design.source='ultimate';
   next.presetLocked=input.presetLocked===true;

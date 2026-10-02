@@ -8,7 +8,7 @@ AST.loads = function (s) {
   const gustPlus = 1 + deltaN, gustMinus = 1 - deltaN;
   return {
     weight, nUlt, ultimate: nUlt * weight, kg, wingLoading, deltaN,
-    gustPlus, gustMinus, gustPlusLoad: gustPlus * weight, gustMinusLoad: gustMinus * weight,
+    gustPlus, gustMinus, gustPlusLoad: gustPlus * weight, gustUltimate: gustPlus * weight * s.aircraft.fs, gustMinusLoad: gustMinus * weight,
     impact: weight * (1 + s.landing.drop / s.landing.stop)
   };
 };

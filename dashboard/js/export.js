@@ -8,7 +8,7 @@ AST.exportCSV = function (r) {
   const rows=[['구분','항목','값','단위','해석']];
   AST.resultDefs.forEach(d=>{
     const value=d.read(r);
-    rows.push([d.section,d.label,Number.isFinite(value)?String(value):'',d.unit,d.status||'초기 추정값']);
+    rows.push([d.section,d.label,Number.isFinite(value)?String(value):'',d.unit,d.status||'계산값']);
   });
   const csv=rows.map(row=>row.map(v=>'"'+String(v).replaceAll('"','""')+'"').join(',')).join('\r\n');
   AST.download('항공기-계산결과.csv','\uFEFF'+csv,'text/csv;charset=utf-8');

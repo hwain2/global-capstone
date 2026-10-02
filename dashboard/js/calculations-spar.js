@@ -1,7 +1,7 @@
 window.AST = window.AST || {};
 AST.spar = function (s, loads) {
   const source = s.design.source;
-  const load = source === 'gust' ? loads.gustPlusLoad : source === 'custom' ? s.design.customLoad : loads.ultimate;
+  const load = source === 'gust' ? loads.gustUltimate : source === 'custom' ? s.design.customLoad : loads.ultimate;
   const rootShear = load / 2;
   const rootMoment = load * s.wing.span / (3 * Math.PI);
   const capArea = Math.abs(rootMoment) / (AST.units.mpaToPa(s.material.capStress) * AST.units.mmToM(s.material.capHeight));

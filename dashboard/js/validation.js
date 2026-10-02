@@ -23,5 +23,9 @@ AST.validate = function (s) {
     if (!Number.isFinite(n) || Math.abs(Math.cos(n * Math.PI / 180)) < 0.05) errors.push((path==='wing.sweep'?'앞전 후퇴각':'1/4 시위 후퇴각') + '의 코사인 값이 0에 너무 가깝습니다.');
   });
   if (s.wing.autoAR && Math.abs(s.wing.ar) > 1e5) errors.push('자동 계산된 가로세로비가 허용 범위를 벗어났습니다.');
+  for (const [key,label] of [['mtowLimit','MTOW 상한'],['estimatedMTOW','예상 MTOW'],['actualCapAreaMm2','실제 캡 면적'],['actualWebThicknessMm','실제 웹 두께'],['tipDeflectionMm','예상 날개끝 처짐'],['tipDeflectionLimitMm','허용 날개끝 처짐'],['stallSpeedLimit','실속속도 상한'],['airfoilClMax','익형 CLmax']]) {
+    const n=s.feasibility[key];
+    if ((key==='mtowLimit'||key==='stallSpeedLimit'||n!==null) && (!Number.isFinite(n) || n <= 0)) errors.push(label+': 0보다 큰 값을 입력하세요.');
+  }
   return errors;
 };
