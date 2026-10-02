@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#101d2d">
   <title>항공기 구조 설계 도구</title>
-  <link rel="stylesheet" href="css/style.css?v=20261003-1">
+  <link rel="stylesheet" href="css/style.css?v=20261003-3">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" defer></script>
   <script src="js/defaults.js?v=20261003-1" defer></script>
   <script src="js/units.js" defer></script>
@@ -14,15 +14,15 @@
   <script src="js/calculations-loads.js?v=20261002-1" defer></script>
   <script src="js/calculations-spar.js?v=20261003-1" defer></script>
   <script src="js/calculations-optimization.js?v=20261003-2" defer></script>
-  <script src="js/feasibility.js?v=20261003-1" defer></script>
+  <script src="js/feasibility.js?v=20261003-3" defer></script>
   <script src="js/sensitivity.js?v=20261002-5" defer></script>
   <script src="js/aircraft-geometry.js" defer></script>
   <script src="js/load-visualization.js?v=20261002-3" defer></script>
   <script src="js/aircraft-3d.js" defer></script>
-  <script src="js/charts.js?v=20261003-1" defer></script>
-  <script src="js/optimization-ui.js?v=20261003-2" defer></script>
+  <script src="js/charts.js?v=20261003-3" defer></script>
+  <script src="js/optimization-ui.js?v=20261003-3" defer></script>
   <script src="js/export.js?v=20261003-1" defer></script>
-  <script src="js/app.js?v=20261003-2" defer></script>
+  <script src="js/app.js?v=20261003-3" defer></script>
 </head>
 <body>
   <header class="site-header" id="overview">
@@ -30,7 +30,7 @@
     <p>중량 · 하중 · 스파 · 민감도</p>
   </header>
   <nav class="section-nav" aria-label="화면 구역">
-    <a href="#overview">개요</a><a href="#inputs">입력값</a><a href="#geometry">3D 형상</a><a href="#weight">중량</a><a href="#loads">하중</a><a href="#spar">스파</a><a href="#sensitivity">민감도</a><a href="#summary">요약·내보내기</a><a href="#optimization">스파 자동 탐색</a><a href="#feasibility">Baseline 판정</a>
+    <a href="#overview">개요</a><a href="#inputs">입력값</a><a href="#geometry">3D 형상</a><a href="#weight">중량</a><a href="#loads">하중</a><a href="#spar">스파</a><a href="#sensitivity">민감도</a><a href="#optimization">스파 자동 탐색</a><a href="#feasibility">Baseline 판정</a><a href="#summary">내보내기</a>
   </nav>
   <main class="page">
     <div id="validation" class="validation" role="alert" hidden></div>
@@ -42,14 +42,14 @@
       <aside class="results-column">
         <section id="weight" class="panel result-panel"><div class="panel-head"><div><span class="eyebrow">03 / 경험식</span><h2>중량</h2></div></div><div id="weightResults"></div></section>
         <section id="loads" class="panel result-panel"><div class="panel-head"><div><span class="eyebrow">04 / 하중 조건</span><h2>하중</h2></div></div><div id="loadResults"></div></section>
-        <section id="spar" class="panel result-panel"><div class="panel-head"><div><span class="eyebrow">05 / 초기 사이징</span><h2>스파</h2></div></div><div id="sparResults"></div><div class="spar-schematic" aria-label="스파 단면"><div class="cap">캡</div><div class="web"></div><div class="cap">캡</div></div></section>
+        <section id="spar" class="panel result-panel"><div class="panel-head"><div><span class="eyebrow">05 / 스파 하중 기준</span><h2>스파 하중</h2></div></div><div id="sparResults"></div></section>
       </aside>
     </div>
-    <section class="panel chart-section"><div class="panel-head"><div><span class="eyebrow">06 / 반날개 구간</span><h2>하중 선도</h2></div><span class="chip">타원 양력분포</span></div><div class="chart-grid"><div><h3>날개폭 방향 양력</h3><div id="liftPlot" class="chart"></div></div><div><h3>전단력</h3><div id="shearPlot" class="chart"></div></div><div><h3>굽힘모멘트</h3><div id="momentPlot" class="chart"></div></div></div></section>
-    <section id="sensitivity" class="panel sensitivity-panel"><div class="panel-head"><div><span class="eyebrow">07 / 변수 분석</span><h2>민감도</h2></div></div><div class="sensitivity-controls"><label>계산식<select id="sensitivityEquation"></select></label><label>변수<select id="sensitivityVariable"></select></label><label>변화 범위<select id="sensitivityRange"><option value="10">±10%</option><option value="20">±20%</option><option value="30">±30%</option><option value="custom">직접 입력</option></select></label><label id="customRangeWrap" hidden>직접 입력 범위 [%]<input id="customRange" type="number" min="1" max="80" step="1" value="20"></label></div><div class="sensitivity-grid"><div><h3>변수 변화에 따른 결과</h3><div id="sensitivityCurve" class="chart tall"></div></div><div><h3>국소 민감도 크기</h3><div id="sensitivityBars" class="chart tall"></div></div></div><div class="table-scroll"><table><thead><tr><th>변수</th><th>기준 입력값</th><th>민감도 지수</th><th>방향</th><th>−20% 결과</th><th>기준 결과</th><th>+20% 결과</th></tr></thead><tbody id="sensitivityTable"></tbody></table></div></section>
-    <section id="summary" class="panel summary-panel"><div class="panel-head"><div><span class="eyebrow">08 / 설계안</span><h2>요약·내보내기</h2></div></div><div class="summary-actions"><button id="downloadCSV" class="primary-button" type="button">결과 CSV</button><button id="saveJSON" type="button">입력값 저장</button><label class="file-button">입력값 불러오기<input id="loadJSON" type="file" accept="application/json,.json"></label><button id="downloadText" type="button">요약 텍스트</button><button id="downloadPNG" type="button">3D PNG</button></div><p id="importStatus" class="micro" role="status"></p><div id="summaryTable" class="table-scroll"></div></section>
-    <section id="optimization" class="panel optimization-panel"><div class="panel-head"><div><span class="eyebrow">09 / Automatic Spar Sizing</span><h2>스파 자동 탐색과 Trade Study</h2></div><span class="chip">초록: 추천 가능 · 노랑: 입력 대기 · 빨강: 부적합</span></div><div id="optimizationSummary"></div><div class="chart-grid optimization-charts"><div><h3>깊이 · 스파 질량</h3><div id="optimizationMass" class="chart"></div></div><div><h3>깊이 · 캡 면적</h3><div id="optimizationCap" class="chart"></div></div><div><h3>깊이 · 웹 두께</h3><div id="optimizationWeb" class="chart"></div></div><div><h3>깊이 · 날개끝 처짐</h3><div id="optimizationDeflection" class="chart"></div></div><div><h3>깊이 · 강도 여유 MS</h3><div id="optimizationMargin" class="chart"></div></div></div><div id="candidateDetail" class="candidate-detail" aria-live="polite"></div></section>
-    <section id="feasibility" class="panel feasibility-panel"><div class="panel-head"><div><span class="eyebrow">09 / Baseline Feasibility</span><h2>기준 형상 가능성 판정</h2></div><span class="chip">PASS · MARGINAL · FAIL · TBD</span></div><div id="feasibilityVerdict" class="feasibility-summary" role="status"></div><div id="feasibilityCards" class="feasibility-grid"></div><details class="feasibility-evidence"><summary>판정에 필요한 추가 입력</summary><p class="micro">확인되지 않은 값은 비워 두세요. 입력한 값의 출처는 각 항목에서 선택할 수 있습니다.</p><div id="feasibilityInputs" class="feasibility-inputs"></div><h3>전체 중량 예산</h3><p class="micro">모든 구성품 질량을 입력해야 MTOW를 판정합니다.</p><div id="weightBudgetInputs" class="feasibility-inputs"></div></details><div class="feasibility-footer"><div><h3>권장 조치</h3><ol id="feasibilityActions"></ol></div><div><h3>입력 신뢰도</h3><div id="inputConfidence" class="confidence"></div><h3>핵심 가정</h3><ul id="criticalAssumptions" class="assumption-list"></ul></div></div></section>
+    <section class="panel chart-section"><div class="panel-head"><div><span class="eyebrow">06 / 반날개 구간</span><h2>하중 선도</h2></div><span class="chip">타원 양력분포</span></div><details id="loadChartsDetails" class="analysis-details"><summary>양력·전단력·굽힘모멘트 그래프 보기</summary><div class="chart-grid"><div><h3>날개폭 방향 양력</h3><div id="liftPlot" class="chart"></div></div><div><h3>전단력</h3><div id="shearPlot" class="chart"></div></div><div><h3>굽힘모멘트</h3><div id="momentPlot" class="chart"></div></div></div></details></section>
+    <section id="sensitivity" class="panel sensitivity-panel"><div class="panel-head"><div><span class="eyebrow">07 / 변수 분석</span><h2>민감도</h2></div></div><details id="sensitivityDetails" class="analysis-details"><summary>민감도 그래프와 변수별 결과 보기</summary><div class="sensitivity-controls"><label>계산식<select id="sensitivityEquation"></select></label><label>변수<select id="sensitivityVariable"></select></label><label>변화 범위<select id="sensitivityRange"><option value="10">±10%</option><option value="20">±20%</option><option value="30">±30%</option><option value="custom">직접 입력</option></select></label><label id="customRangeWrap" hidden>직접 입력 범위 [%]<input id="customRange" type="number" min="1" max="80" step="1" value="20"></label></div><div class="sensitivity-grid"><div><h3>변수 변화에 따른 결과</h3><div id="sensitivityCurve" class="chart tall"></div></div><div><h3>국소 민감도 크기</h3><div id="sensitivityBars" class="chart tall"></div></div></div><div class="table-scroll"><table><thead><tr><th>변수</th><th>기준 입력값</th><th>민감도 지수</th><th>방향</th><th>−20% 결과</th><th>기준 결과</th><th>+20% 결과</th></tr></thead><tbody id="sensitivityTable"></tbody></table></div></details></section>
+    <section id="optimization" class="panel optimization-panel"><div class="panel-head"><div><span class="eyebrow">08 / Automatic Spar Sizing</span><h2>스파 자동 탐색과 Trade Study</h2></div><span class="chip">초록: 추천 가능 · 노랑: 입력 대기 · 빨강: 부적합</span></div><div id="optimizationSummary"></div><details id="tradeStudyDetails" class="analysis-details"><summary>Trade Study 그래프 5개와 후보 상세 보기</summary><div class="chart-grid optimization-charts"><div><h3>깊이 · 스파 질량</h3><div id="optimizationMass" class="chart"></div></div><div><h3>깊이 · 캡 면적</h3><div id="optimizationCap" class="chart"></div></div><div><h3>깊이 · 웹 두께</h3><div id="optimizationWeb" class="chart"></div></div><div><h3>깊이 · 날개끝 처짐</h3><div id="optimizationDeflection" class="chart"></div></div><div><h3>깊이 · 강도 여유 MS</h3><div id="optimizationMargin" class="chart"></div></div></div><div id="candidateDetail" class="candidate-detail" aria-live="polite"></div></details></section>
+    <section id="feasibility" class="panel feasibility-panel"><div class="panel-head"><div><span class="eyebrow">09 / Baseline Feasibility</span><h2>기준 형상 가능성 판정</h2></div><span class="chip">PASS · MARGINAL · FAIL · TBD</span></div><div id="feasibilityVerdict" class="feasibility-summary" role="status"></div><div id="feasibilityCards" class="feasibility-grid"></div><details class="analysis-details"><summary>형상·기존 스파 단면·입력 근거 세부 판정</summary><div id="feasibilityDetailCards" class="feasibility-grid"></div></details><details class="feasibility-evidence"><summary>판정에 필요한 추가 입력</summary><p class="micro">확인되지 않은 값은 비워 두세요. 입력한 값의 출처는 각 항목에서 선택할 수 있습니다.</p><div id="feasibilityInputs" class="feasibility-inputs"></div><h3>전체 중량 예산</h3><p class="micro">모든 구성품 질량을 입력해야 MTOW를 판정합니다.</p><div id="weightBudgetInputs" class="feasibility-inputs"></div></details><div class="feasibility-footer"><div><h3>권장 조치</h3><ol id="feasibilityActions"></ol></div><details class="analysis-details"><summary>입력 신뢰도와 핵심 가정</summary><div><h3>입력 신뢰도</h3><div id="inputConfidence" class="confidence"></div><h3>핵심 가정</h3><ul id="criticalAssumptions" class="assumption-list"></ul></div></details></div></section>
+    <section id="summary" class="panel summary-panel"><div class="panel-head"><div><span class="eyebrow">10 / 결과 저장</span><h2>내보내기</h2></div></div><div class="summary-actions"><button id="downloadCSV" class="primary-button" type="button">결과 CSV</button><button id="saveJSON" type="button">입력값 저장</button><label class="file-button">입력값 불러오기<input id="loadJSON" type="file" accept="application/json,.json"></label><button id="downloadText" type="button">요약 텍스트</button><button id="downloadPNG" type="button">3D PNG</button></div><p id="importStatus" class="micro" role="status"></p><details class="analysis-details"><summary>전체 계산값과 계산식 보기</summary><div id="summaryTable" class="table-scroll"></div></details></section>
   </main>
 </body>
 </html>
