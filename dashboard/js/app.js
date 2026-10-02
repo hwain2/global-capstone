@@ -71,6 +71,7 @@ AST.resultDefs = [
   {section:'하중',label:'평균 착륙 충격력',unit:'N',read:r=>r.loads.impact,equation:'Favg = m g (1 + h/s).'},
   {section:'스파',label:'선택한 하중',unit:'N',read:r=>r.spar.load,equation:'극한 기동·극한 돌풍·착륙 평균 충격력 또는 사용자 지정 하중 중 선택. 착륙은 날개 하중 경로와 다름.'},
   {section:'스파',label:'사용 가능 스파 깊이',unit:'mm',read:r=>r.spar.availableDepthMm,equation:'스파 위치 두께 × 깊이 활용률. 익형 두께 미입력 시 cr(t/c)를 상한으로 사용.',status:'익형 위치 두께 확인 필요'},
+  {section:'스파',label:'선정 단면 최소 필요 깊이',unit:'mm',read:r=>r.spar.requiredDepthMm,equation:'max(|Mroot|×1000/(σallow×선정 캡 면적), |Vroot|/(τallow×선정 웹 두께)). 선정 단면의 강도상 최소 깊이이며 형상·좌굴 검증은 별도.',status:'STRUCT 단면 입력 필요'},
   {section:'스파',label:'루트 전단력',unit:'N',read:r=>r.spar.rootShear,equation:'각 반날개에서 Vroot = L / 2.'},
   {section:'스파',label:'루트 굽힘모멘트',unit:'N·m',read:r=>r.spar.rootMoment,equation:'타원 양력분포에서 Mroot = L b / (3π).'},
   {section:'스파',label:'필요 캡 면적',unit:'mm²',read:r=>r.spar.capAreaMm2,equation:'Acap ≥ |Mroot| / (σallow × 사용 가능 스파 깊이). 기존 스파 식을 사용.'},

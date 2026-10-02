@@ -14,7 +14,14 @@ AST.spar = function (s, loads) {
   const capAreaMm2=rootMoment===null||sizingDepthMm===null?null:Math.abs(rootMoment)*1000/(s.material.capStress*sizingDepthMm);
   const webThicknessMm=rootShear===null||sizingDepthMm===null?null:Math.abs(rootShear)/(s.material.webStress*sizingDepthMm);
   const adoptedWebThicknessMm=webThicknessMm===null||d.manufacturingMinWebMm===null?null:Math.max(webThicknessMm,d.manufacturingMinWebMm);
-  return {load,wingLoad,rootShear,rootMoment,rootMaxThicknessMm,localThicknessMm,availableDepthMm,sizingDepthMm,depthConflict,capAreaMm2,webThicknessMm,adoptedWebThicknessMm,localThicknessVerified:d.localThicknessMm!==null&&d.localThicknessMm<=rootMaxThicknessMm};
+  const requiredDepthMm=rootMoment===null||d.selectedCapAreaMm2===null||d.selectedWebThicknessMm===null?null:Math.max(
+    Math.abs(rootMoment)*1000/(s.material.capStress*d.selectedCapAreaMm2),
+    Math.abs(rootShear)/(s.material.webStress*d.selectedWebThicknessMm)
+  );
+  const sectionDepthConflict=requiredDepthMm!==null&&availableDepthMm!==null&&requiredDepthMm>availableDepthMm;
+  return {load,wingLoad,rootShear,rootMoment,rootMaxThicknessMm,localThicknessMm,availableDepthMm,sizingDepthMm,
+    depthConflict:depthConflict||sectionDepthConflict,requestedDepthConflict:depthConflict,sectionDepthConflict,requiredDepthMm,
+    capAreaMm2,webThicknessMm,adoptedWebThicknessMm,localThicknessVerified:d.localThicknessMm!==null&&d.localThicknessMm<=rootMaxThicknessMm};
 };
 AST.spanLoads = function (load, span, points = 61) {
   const R = span / 2, rows = [];

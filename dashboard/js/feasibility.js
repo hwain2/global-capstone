@@ -22,7 +22,7 @@ AST.assessFeasibility = function(r){
     value:structuralReady?`캡 필요 ≥ ${fmt(sp.capAreaMm2,2)} mm² · 웹 이론 최소 ≥ ${fmt(sp.webThicknessMm,3)} mm`:'스파 깊이 활용률 또는 날개 하중 경로 미정',
     criterion:`익근 최대두께 상한 ${fmt(sp.rootMaxThicknessMm,1)} mm · 사용 가능 깊이 ${sp.availableDepthMm===null?'TBD':fmt(sp.availableDepthMm,1)+' mm'}`,
     margin:sp.sizingDepthMm===null?'TBD':`사이징 깊이 ${fmt(sp.sizingDepthMm,1)} mm`,
-    cause:sp.depthConflict?'선정 스파 깊이가 사용 가능 깊이를 초과합니다. 구조 설계 가정이 유효하지 않습니다.':!structuralReady?'90/100 mm와 같은 임의 유효 높이는 사용하지 않습니다. 깊이 활용률을 정해야 단면을 계산합니다.':sp.localThicknessVerified?'입력한 스파 위치 두께를 기준으로 1차 단면을 계산했습니다.':'익근 최대두께를 상한으로 사용한 잠정 사이징입니다. 실제 스파 위치 두께는 미확인입니다.',
+    cause:sp.depthConflict?sp.requestedDepthConflict?'선정 스파 깊이가 사용 가능 깊이를 초과합니다. 구조 설계 가정이 유효하지 않습니다.':'선정한 캡/웹 단면이 강도상 요구하는 최소 깊이가 사용 가능 깊이를 초과합니다.':!structuralReady?'90/100 mm와 같은 임의 유효 높이는 사용하지 않습니다. 깊이 활용률을 정해야 단면을 계산합니다.':sp.localThicknessVerified?'입력한 스파 위치 두께를 기준으로 1차 단면을 계산했습니다.':'익근 최대두께를 상한으로 사용한 잠정 사이징입니다. 실제 스파 위치 두께는 미확인입니다.',
     action:sp.depthConflict?'선정 스파 깊이를 줄이거나 스파 구조를 변경하세요.':!structuralReady?'스파 깊이 활용률을 정하고, 가능하면 익형 좌표의 스파 위치 두께를 입력하세요.':'캡 면적과 웹 제작 최소 적층두께를 선정하세요.',
     scope:'structural'});
 
@@ -61,11 +61,12 @@ AST.assessFeasibility = function(r){
     action:defRatio===null?'처짐 허용 기준을 정하고 구조 해석값을 입력하세요.':defRatio>1?'스파 강성을 높이거나 허용 기준과 운용 조건을 재검토하세요.':'EI와 처짐 해석의 근거를 확인하세요.',
     scope:'structural'});
 
-  const chosenDepth=s.sparDesign.requestedDepthMm??sp.sizingDepthMm;
+  const depths=[s.sparDesign.requestedDepthMm,sp.requiredDepthMm].filter(has);
+  const chosenDepth=depths.length?Math.max(...depths):null;
   const depthRatio=chosenDepth!==null&&sp.availableDepthMm!==null?chosenDepth/sp.availableDepthMm:null;
   const packagingStatus=sp.depthConflict?'FAIL':depthRatio===null||!sp.localThicknessVerified?'TBD':depthRatio>0.8?'MARGINAL':'PASS';
   add({title:'Packaging · 스파 장착',status:packagingStatus,
-    value:`선정/사이징 깊이 ${chosenDepth===null?'TBD':fmt(chosenDepth,1)+' mm'} · 사용 가능 깊이 ${sp.availableDepthMm===null?'TBD':fmt(sp.availableDepthMm,1)+' mm'}`,
+    value:`선정/강도상 필요 깊이 ${chosenDepth===null?'TBD':fmt(chosenDepth,1)+' mm'} · 사용 가능 깊이 ${sp.availableDepthMm===null?'TBD':fmt(sp.availableDepthMm,1)+' mm'}`,
     criterion:`익근 최대두께 절대 상한 ${fmt(sp.rootMaxThicknessMm,1)} mm`,
     margin:depthRatio===null?'TBD':`깊이 사용률 ${fmt(depthRatio*100,1)}%`,
     cause:sp.depthConflict?'INVALID STRUCTURAL ASSUMPTION — 선정 깊이가 허용 공간을 초과합니다. 이는 Baseline 형상의 실패 판정이 아닙니다.':!sp.localThicknessVerified?'t/c×익근 시위는 최대두께 상한일 뿐 실제 스파 위치 두께가 아닙니다. 깊이 방향 장착 판정은 보류합니다.':'입력한 스파 위치 두께를 기준으로 깊이 방향을 비교했습니다. 폭/날개폭 방향 간섭은 별도 확인이 필요합니다.',
