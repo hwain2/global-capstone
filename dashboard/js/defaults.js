@@ -30,13 +30,14 @@ AST.resolve = function (state) {
   else w.taper=w.tipChord/w.rootChord;
   w.mac=AST.trapezoidMAC(w.rootChord,w.tipChord);
   w.equivChord=w.area/w.span;
+  w.quarterSweep=Math.atan(Math.tan(w.sweep*Math.PI/180)-(w.rootChord-w.tipChord)/(2*w.span))*180/Math.PI;
   s.flight.q=0.5*s.flight.rho*s.flight.speed*s.flight.speed;
   f.ld=f.length/((f.width+f.height)/2);
   return s;
 };
 AST.synchronize = function (state) {
   const resolved=AST.resolve(state);
-  for(const key of ['span','ar','rootChord','tipChord','taper','mac','equivChord'])state.wing[key]=resolved.wing[key];
+  for(const key of ['span','ar','rootChord','tipChord','taper','mac','equivChord','quarterSweep'])state.wing[key]=resolved.wing[key];
   state.flight.q=resolved.flight.q;
   state.fuselage.ld=resolved.fuselage.ld;
   return state;

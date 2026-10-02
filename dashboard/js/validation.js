@@ -41,6 +41,7 @@ AST.geometryChecks = function(s){
   add('S = b(cr+ct)/2',w.span*(w.rootChord+w.tipChord)/2,w.area,'m²',!w.autoChords&&relative(w.span*(w.rootChord+w.tipChord)/2,w.area)>0.02);
   add('Taper = ct/cr',w.taper,w.tipChord/w.rootChord,'—');
   add('MAC (trapezoid)',w.mac,AST.trapezoidMAC(w.rootChord,w.tipChord),'m');
+  add('1/4 시위 후퇴각 (앞전 후퇴각·시위에서 계산)',w.quarterSweep,Math.atan(Math.tan(w.sweep*Math.PI/180)-(w.rootChord-w.tipChord)/(2*w.span))*180/Math.PI,'deg');
   add('익근 최대두께 = cr(t/c)',w.rootChord*w.tc*1000,w.rootChord*w.tc*1000,'mm');
   add('동체 l/d ≈ L/[(폭+높이)/2]',f.ld,f.length/((f.width+f.height)/2),'—');
   if(s.presetLocked){

@@ -40,7 +40,7 @@ AST.feasibilityFields = [
 ];
 AST.budgetFields=Object.entries(AST.budgetLabels).map(([key,label])=>['weightBudget.'+key,label,'kg']);
 AST.fieldLabel = function(path){if(path==='design.customLoad')return '사용자 지정 총양력';for(const [p,label] of AST.feasibilityFields.concat(AST.budgetFields))if(p===path)return label;for(const g of AST.fields)for(const [p,label] of g.items)if(p===path)return label;return path;};
-AST.isDerived = path => path==='wing.span'?!AST.state.wing.autoAR:path==='wing.ar'?AST.state.wing.autoAR:path==='wing.taper'?!AST.state.wing.autoChords:['wing.rootChord','wing.tipChord'].includes(path)?AST.state.wing.autoChords:['wing.mac','wing.equivChord','flight.q','fuselage.ld'].includes(path);
+AST.isDerived = path => path==='wing.span'?!AST.state.wing.autoAR:path==='wing.ar'?AST.state.wing.autoAR:path==='wing.taper'?!AST.state.wing.autoChords:['wing.rootChord','wing.tipChord'].includes(path)?AST.state.wing.autoChords:['wing.mac','wing.equivChord','wing.quarterSweep','flight.q','fuselage.ld'].includes(path);
 AST.sourceFor = path => AST.isDerived(path)?'CALC':AST.get(AST.state,path)===null?'TBD':AST.state.sources[path]||(path==='feasibility.stallSpeedLimit'?'REQ':path.startsWith('sparDesign.')||path.startsWith('weightBudget.')||path==='design.customLoad'?'STRUCT':'ASSUMED');
 AST.sourceOptions = path => `<select class="source-select" data-source-path="${path}" aria-label="${AST.escape(AST.fieldLabel(path))} 입력 출처" ${AST.get(AST.state,path)===null?'disabled':''}>${['INHA','REQ','STRUCT','ASSUMED','TBD'].map(v=>`<option value="${v}" ${AST.sourceFor(path)===v?'selected':''}>${v}</option>`).join('')}</select>`;
 AST.allSourcePaths=()=>AST.fields.flatMap(g=>g.items).filter(([, ,unit])=>unit!=='bool').map(x=>x[0]).concat(AST.state.design.source==='custom'?['design.customLoad']:[],AST.feasibilityFields.map(x=>x[0]),AST.budgetFields.map(x=>x[0]));
@@ -81,7 +81,7 @@ AST.resultDefs = [
 AST.resultAssumptions={
   'Finger 공허중량':['aircraft.mass'],
   'Raymer 주익':['wing.taper','wing.sweep','wing.tc','aircraft.nLimit'],
-  'Sadraey 주익 식 값':['wing.taper','wing.quarterSweep','wing.tc','material.density','material.krw'],
+  'Sadraey 주익 식 값':['wing.taper','wing.sweep','wing.tc','material.density','material.krw'],
   'Raymer 동체':['fuselage.wettedArea','fuselage.lt','fuselage.length','fuselage.width','fuselage.height'],
   'Sadraey 동체 식 값':['fuselage.length','fuselage.width','fuselage.height','material.density','material.krf','material.pmax','material.kinlet']
 };
@@ -223,7 +223,7 @@ AST.render = function() {
   warningBox.hidden=!warnings.length;
   warningBox.innerHTML=warnings.length?'<strong>Geometry inconsistency · 형상 입력 확인</strong><ul>'+warnings.map(x=>`<li>${AST.escape(x.name)}</li>`).join('')+'</ul>':'';
   document.getElementById('geometryChecks').innerHTML=checks.map(x=>`<li>${AST.escape(x.name)}: ${AST.fmt(x.actual,3)} ${AST.escape(x.unit||'')} ${x.warning?'<strong>확인 필요</strong>':'<span class="source-badge">CALC</span>'}</li>`).join('');
-  for(const path of ['wing.span','wing.ar','wing.rootChord','wing.tipChord','wing.taper','wing.mac','wing.equivChord','flight.q','fuselage.ld']) {
+  for(const path of ['wing.span','wing.ar','wing.rootChord','wing.tipChord','wing.taper','wing.mac','wing.equivChord','wing.quarterSweep','flight.q','fuselage.ld']) {
     const el=document.querySelector(`[data-path="${path}"]`);
     if(!el)continue;
     el.readOnly=(AST.state.presetLocked && AST.inhaTwoProp.lockedPaths.includes(path)) || AST.isDerived(path);
