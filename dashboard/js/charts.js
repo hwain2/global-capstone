@@ -6,7 +6,7 @@ AST.plotLayout = function (yTitle) {
     yaxis:{title:yTitle,gridcolor:'#30485f',zerolinecolor:'#30485f'},showlegend:false};
 };
 AST.renderCharts = function (r,s) {
-  if(!window.Plotly)return;
+  if(!window.Plotly||!document.getElementById('loadChartsDetails').open)return;
   const cfg={responsive:true,displaylogo:false};
   [['liftPlot','distribution','분포 양력 [N/m]','#65c9ff'],
    ['shearPlot','shear','전단력 [N]','#f8b45e'],

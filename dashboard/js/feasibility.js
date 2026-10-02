@@ -131,9 +131,13 @@ AST.assessFeasibility = function(r){
 AST.renderFeasibility=function(r){
   const a=AST.assessFeasibility(r),esc=AST.escape;
   const statusClass=s=>'status-'+s.toLowerCase().replaceAll(' ','-');
+  const primaryTitles=['Automatic Spar Sizing · 자동 탐색','Weight · 중량 예산','Stiffness · 처짐','Flight Load · 지배 하중','Aero · 실속 성능'];
+  const cardHTML=(c,compact=false)=>`<article class="feasibility-card ${statusClass(c.status)}"><div class="feasibility-card-head"><h3>${esc(c.title)}</h3><span class="status-pill ${statusClass(c.status)}">${c.status}</span></div><p><strong>계산값</strong> ${esc(c.value)}</p><p><strong>기준</strong> ${esc(c.criterion)}</p><p><strong>Margin</strong> ${esc(c.margin)}</p>${compact?'':`<small>${esc(c.cause)}</small><p class="card-action"><strong>Action</strong> ${esc(c.action)}</p>`}</article>`;
   document.getElementById('feasibilityVerdict').innerHTML=`<span class="feasibility-verdict ${statusClass(a.verdict)}">${esc(a.verdict)}</span><p>${esc(a.lead)}</p>`;
-  document.getElementById('feasibilityCards').innerHTML=a.cards.map(c=>`<article class="feasibility-card ${statusClass(c.status)}"><div class="feasibility-card-head"><h3>${esc(c.title)}</h3><span class="status-pill ${statusClass(c.status)}">${c.status}</span></div><p><strong>계산값</strong> ${esc(c.value)}</p><p><strong>기준</strong> ${esc(c.criterion)}</p><p><strong>Margin</strong> ${esc(c.margin)}</p><small>${esc(c.cause)}</small><p class="card-action"><strong>Action</strong> ${esc(c.action)}</p></article>`).join('');
-  document.getElementById('feasibilityActions').innerHTML=a.actions.map(x=>`<li>${esc(x)}</li>`).join('');
+  document.getElementById('feasibilityCards').innerHTML=a.cards.filter(c=>primaryTitles.includes(c.title)).map(c=>cardHTML(c,true)).join('');
+  document.getElementById('feasibilityDetailCards').innerHTML=a.cards.filter(c=>!primaryTitles.includes(c.title)).map(c=>cardHTML(c,false)).join('');
+  const actions=a.cards.filter(c=>primaryTitles.includes(c.title)&&c.status!=='PASS').map(c=>c.action).filter(Boolean).slice(0,4);
+  document.getElementById('feasibilityActions').innerHTML=(actions.length?actions:['입력값과 상세 구조 해석 결과를 확인하세요.']).map(x=>`<li>${esc(x)}</li>`).join('');
   const paths=AST.allSourcePaths().filter(path=>!AST.isDerived(path));
   const counts={INHA:0,REQ:0,STRUCT:0,ASSUMED:0,TBD:0};
   paths.forEach(path=>{const tag=AST.sourceFor(path);if(tag in counts)counts[tag]++;});

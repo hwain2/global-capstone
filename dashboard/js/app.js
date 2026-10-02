@@ -111,7 +111,7 @@ AST.fieldHTML = function([path,label,unit],advanced) {
   return `<div class="field"><label for="input-${path}">${AST.escape(label)}${advanced || path==='fuselage.lt' ? '<span class="verify-icon"'+tip+'>?</span>':''}</label><span class="input-unit"><input id="input-${path}" type="number" inputmode="decimal" data-path="${path}" step="${step}" value="${val===null?'':AST.escape(val)}" placeholder="${optional?'미입력 · TBD':''}" title="증감 단위: ${step} ${AST.escape(unit)}" ${locked||derived?'readonly':''}><em>${AST.escape(unit)}</em></span><div class="field-source"><span>출처</span>${derived?'<span class="source-badge">CALC</span>':AST.sourceOptions(path)}</div></div>`;
 };
 AST.buildInputs = function() {
-  document.getElementById('inputGroups').innerHTML=AST.fields.map(g=>`<details class="input-group" ${g.advanced?'':'open'}><summary>${AST.escape(g.group)} <span>${g.items.length}</span></summary><div class="fields">${g.items.map(x=>AST.fieldHTML(x,g.advanced)).join('')}</div>${g.group==='주익'?'<p id="wingConsistency" class="micro wing-consistency" role="status"></p>':''}</details>`).join('')+
+  document.getElementById('inputGroups').innerHTML=AST.fields.map(g=>`<details class="input-group" ${['기체','주익','스파 자동 탐색 · STRUCT'].includes(g.group)?'open':''}><summary>${AST.escape(g.group)} <span>${g.items.length}</span></summary><div class="fields">${g.items.map(x=>AST.fieldHTML(x,g.advanced)).join('')}</div>${g.group==='주익'?'<p id="wingConsistency" class="micro wing-consistency" role="status"></p>':''}</details>`).join('')+
   `<details class="input-group" open><summary>스파 설계 하중 <span>2</span></summary><div class="fields"><label class="field"><span>하중 조건</span><select data-path="design.source"><option value="ultimate">극한 기동하중</option><option value="gust">극한 양의 돌풍</option><option value="landing">착륙 충격력 · 별도 경로</option><option value="custom">사용자 지정 날개 하중</option></select><span class="source-badge">STRUCT</span></label><div id="customLoadWrap" ${AST.state.design.source==='custom'?'':'hidden'}>${AST.fieldHTML(['design.customLoad','사용자 지정 총양력','N'],false)}</div></div></details>`;
   const container=document.getElementById('inputGroups');
   container.oninput=AST.onInput;
@@ -175,15 +175,25 @@ AST.onInput = function(e) {
 };
 AST.resultHTML = function(d,r) {
   const meta=AST.resultMeta(d),value=d.read(r);
-  return `<div class="result-row"><div class="result-line"><span>${AST.escape(d.label)} <span class="source-badge">${meta.source}</span></span><strong>${AST.fmt(value,d.unit==='mm'?3:2)} <small>${AST.escape(d.unit)}</small></strong></div><div class="result-status">${value===null?'TBD · 입력 필요':AST.escape(meta.status)}${meta.note&&meta.note!==meta.status?' · '+AST.escape(meta.note):''}</div><details class="equation"><summary>계산식 보기</summary><code>${AST.escape(d.equation)}</code></details></div>`;
+  const note=value===null?'TBD · 입력 필요':meta.status==='계산값'?'':AST.escape(meta.status)+(meta.note&&meta.note!==meta.status?' · '+AST.escape(meta.note):'');
+  return `<div class="result-row"><div class="result-line"><span>${AST.escape(d.label)} <span class="source-badge">${meta.source}</span></span><strong>${AST.fmt(value,d.unit==='mm'?3:2)} <small>${AST.escape(d.unit)}</small></strong></div>${note?`<div class="result-status">${note}</div>`:''}<details class="equation"><summary>계산식 보기</summary><code>${AST.escape(d.equation)}</code></details></div>`;
+};
+AST.primaryResults={
+  '중량':['Finger 공허중량','Raymer 주익','Raymer 동체'],
+  '하중':['날개 하중 W/S','극한 양력','양의 돌풍 극한하중','평균 착륙 충격력'],
+  '스파':['사용 가능 스파 깊이','루트 전단력','루트 굽힘모멘트']
 };
 AST.renderResults = function(r) {
   ['중량','하중','스파'].forEach(section=>{
     const id=section==='중량'?'weightResults':section==='하중'?'loadResults':'sparResults';
-    document.getElementById(id).innerHTML=AST.resultDefs.filter(d=>d.section===section).map(d=>AST.resultHTML(d,r)).join('');
+    const defs=AST.resultDefs.filter(d=>d.section===section),primary=AST.primaryResults[section];
+    const main=defs.filter(d=>primary.includes(d.label)).map(d=>AST.resultHTML(d,r)).join('');
+    const more=defs.filter(d=>!primary.includes(d.label)).map(d=>AST.resultHTML(d,r)).join('');
+    const target=document.getElementById(id),expanded=target.querySelector('.result-more')?.open;
+    target.innerHTML=main+`<details class="result-more" ${expanded?'open':''}><summary>${section==='중량'?'참고 경험식':section==='하중'?'하중 중간 계산값':'기존 단면 비교'} 보기</summary>${more}</details>`;
   });
   document.getElementById('overviewCards').innerHTML=[
-    ['설계 계산질량',r.state.aircraft.mass,'kg'],['날개폭',r.state.wing.span,'m'],['극한 양력',r.loads.ultimate,'N'],['스파 사용 가능 깊이',r.spar.availableDepthMm,'mm']
+    ['설계 계산질량',r.state.aircraft.mass,'kg'],['날개면적 S',r.state.wing.area,'m²'],['날개폭 b',r.state.wing.span,'m'],['가로세로비 AR',r.state.wing.ar,'']
   ].map(([label,v,unit])=>`<div class="overview-card"><span>${label}</span><strong>${AST.fmt(v)} <small>${unit}</small></strong></div>`).join('');
   const rows=AST.resultDefs.map(d=>{const m=AST.resultMeta(d),v=d.read(r);return `<tr><td>${AST.escape(d.section)}</td><td>${AST.escape(d.label)}</td><td>${AST.fmt(v,4)}</td><td>${AST.escape(d.unit)}</td><td><span class="source-badge">${m.source}</span></td><td>${v===null?'TBD':AST.escape(m.status)}</td><td>${AST.escape(m.note)}</td><td><details class="equation"><summary>계산식 보기</summary><code>${AST.escape(d.equation)}</code></details></td></tr>`;}).join('');
   document.getElementById('summaryTable').innerHTML=`<table><thead><tr><th>구분</th><th>결과</th><th>값</th><th>단위</th><th>Source</th><th>Status</th><th>Assumption / Note</th><th>계산식</th></tr></thead><tbody>${rows}</tbody></table>`;
@@ -212,7 +222,7 @@ AST.renderSensitivityUI = function(){
   document.getElementById('customRangeWrap').hidden=rangeEl.value!=='custom';
   document.getElementById('customRange').value=range;
   document.getElementById('sensitivityTable').innerHTML=sen.table.map(p=>`<tr><td>${AST.escape(AST.fieldLabel(p.path))}</td><td>${AST.fmt(p.baseline,3)}</td><td>${AST.fmt(p.index,3)}</td><td>${p.direction}</td><td>${AST.fmt(p.minus20,3)}</td><td>${AST.fmt(p.base,3)}</td><td>${AST.fmt(p.plus20,3)}</td></tr>`).join('');
-  AST.renderSensitivity(sen);
+  if(document.getElementById('sensitivityDetails').open)AST.renderSensitivity(sen);
 };
 AST.render = function() {
   const r=AST.calculate(AST.state), banner=document.getElementById('validation');
@@ -239,7 +249,7 @@ AST.render = function() {
   if(r.errors.length){
     AST.lastResult=null;
     document.getElementById('loadSelection').hidden=true;
-    ['weightResults','loadResults','sparResults','summaryTable','overviewCards','sensitivityTable','feasibilityVerdict','feasibilityCards','feasibilityActions','inputConfidence','criticalAssumptions','optimizationSummary','candidateDetail'].forEach(id=>document.getElementById(id).innerHTML='<p class="muted">입력값을 수정하면 결과를 계산합니다.</p>');
+    ['weightResults','loadResults','sparResults','summaryTable','overviewCards','sensitivityTable','feasibilityVerdict','feasibilityCards','feasibilityDetailCards','feasibilityActions','inputConfidence','criticalAssumptions','optimizationSummary','candidateDetail'].forEach(id=>document.getElementById(id).innerHTML='<p class="muted">입력값을 수정하면 결과를 계산합니다.</p>');
     for(const id of ['aircraftPlot','liftPlot','shearPlot','momentPlot','sensitivityCurve','sensitivityBars','optimizationMass','optimizationCap','optimizationWeb','optimizationDeflection','optimizationMargin']){
       const target=document.getElementById(id);
       if(window.Plotly && target.data)Plotly.purge(target);
@@ -283,6 +293,9 @@ AST.sanitizeImported = function(input){
 document.addEventListener('DOMContentLoaded',()=>{
   AST.synchronize(AST.state);
   AST.buildInputs();
+  document.getElementById('loadChartsDetails').addEventListener('toggle',e=>{if(e.target.open&&AST.lastResult)AST.renderCharts(AST.lastResult,AST.lastResult.state);});
+  document.getElementById('sensitivityDetails').addEventListener('toggle',e=>{if(e.target.open&&AST.lastResult)AST.renderSensitivityUI();});
+  document.getElementById('tradeStudyDetails').addEventListener('toggle',e=>{if(e.target.open&&AST.lastResult)AST.renderOptimization(AST.lastResult);});
   document.getElementById('displayToggles').addEventListener('change',e=>{const key=e.target.dataset.display;if(key){AST.state.display[key]=e.target.checked;AST.render();}});
   document.querySelectorAll('[data-camera]').forEach(b=>b.addEventListener('click',()=>AST.setCamera(b.dataset.camera)));
   document.getElementById('applyInhaPreset').addEventListener('click',AST.applyInhaPreset);
