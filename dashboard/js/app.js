@@ -249,7 +249,8 @@ AST.render = function() {
   if(r.errors.length){
     AST.lastResult=null;
     document.getElementById('loadSelection').hidden=true;
-    ['weightResults','loadResults','sparResults','summaryTable','overviewCards','sensitivityTable','feasibilityVerdict','feasibilityCards','feasibilityDetailCards','feasibilityActions','inputConfidence','criticalAssumptions','optimizationSummary','candidateDetail'].forEach(id=>document.getElementById(id).innerHTML='<p class="muted">입력값을 수정하면 결과를 계산합니다.</p>');
+    ['weightResults','loadResults','sparResults','summaryTable','overviewCards','sensitivityTable','optimizationSummary','candidateDetail'].forEach(id=>document.getElementById(id).innerHTML='<p class="muted">입력값을 수정하면 결과를 계산합니다.</p>');
+    AST.renderFeasibilityErrors();
     for(const id of ['aircraftPlot','liftPlot','shearPlot','momentPlot','sensitivityCurve','sensitivityBars','optimizationMass','optimizationCap','optimizationWeb','optimizationDeflection','optimizationMargin']){
       const target=document.getElementById(id);
       if(window.Plotly && target.data)Plotly.purge(target);
