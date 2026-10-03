@@ -6,10 +6,11 @@ const vm=require('node:vm');
 const context={window:{}};
 context.window=context;
 vm.createContext(context);
-for(const name of ['defaults','units','validation','calculations-weight','calculations-loads','calculations-spar','calculations-optimization']){
+for(const name of ['defaults','units','validation','calculations-weight','calculations-loads','calculations-spar','calculations-optimization','feasibility']){
   vm.runInContext(fs.readFileSync(path.join(__dirname,'..','js',name+'.js'),'utf8'),context,{filename:name+'.js'});
 }
 const A=context.AST;
+A.fmt=(value,places=2)=>Number.isFinite(value)?value.toFixed(places):'—';
 const inha=()=>{
   const s=A.clone(A.defaults);
   s.aircraft.mass=24.9;s.aircraft.g=9.81;s.wing.area=.74;s.wing.autoAR=false;s.wing.ar=12;
@@ -68,5 +69,21 @@ const calc=s=>{const r=A.calculate(s);assert.deepEqual(Array.from(r.errors),[]);
   assert.ok(r.optimization.recommended);
   assert.equal(r.optimization.recommended.stiffnessPass,null);
   assert.equal(r.optimization.overall,'CONDITIONALLY FEASIBLE');
+}
+{
+  const a=A.assessFeasibility(calc(inha()));
+  assert.equal(a.verdict,'입력 부족');
+  assert.deepEqual(Array.from(a.cards,c=>c.status),['TBD','PASS','TBD']);
+  const s=built(),initial=calc(s);
+  for(const key of Object.keys(s.weightBudget))s.weightBudget[key]=0;
+  s.weightBudget.wingStructure=initial.weight.raymerWing+0.1;
+  s.weightBudget.fuselageStructure=initial.weight.raymerFuse+0.1;
+  const pass=A.assessFeasibility(calc(s));
+  assert.equal(pass.verdict,'경험식 기준 가능');
+  assert.deepEqual(Array.from(pass.cards,c=>c.status),['PASS','PASS','PASS']);
+  s.sparDesign.manufacturingMinCapMm=100;
+  const fail=A.assessFeasibility(calc(s));
+  assert.equal(fail.verdict,'경험식 기준 불가능');
+  assert.equal(fail.cards[2].status,'FAIL');
 }
 console.log('Automatic spar sizing tests passed');
