@@ -14,3 +14,17 @@
 .optimization-panel{margin-top:18px}.optimization-head{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap;padding:12px 0}.optimization-head h3{font-size:2rem;margin:10px 0}.optimization-head p{margin:6px 0}.optimization-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0}.optimization-metrics>div{background:#172b3d;border:1px solid #324b60;border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:7px}.optimization-metrics span{color:#adbdca;font-size:.85rem}.optimization-metrics strong{font-size:1rem}.optimization-charts{grid-template-columns:repeat(2,minmax(0,1fr))}.candidate-detail{margin-top:18px;padding:16px;border:1px solid #37586b;border-radius:12px;background:#132537}.candidate-detail h3{margin:0 0 14px}.candidate-grid{display:grid;grid-template-columns:minmax(150px,1fr) minmax(100px,1.4fr);gap:9px 16px}.candidate-grid span{color:#a8bdc9}.candidate-grid strong{overflow-wrap:anywhere}@media(max-width:850px){.optimization-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.optimization-charts{grid-template-columns:1fr}}@media(max-width:520px){.optimization-metrics{grid-template-columns:1fr}}
 .feasibility-verdict.status-structural-redesign-required{color:#ff9ea5}.optimization-panel .chip{white-space:normal;text-align:right}.optimization-charts>div{min-width:0}
 .inputs-panel{max-height:min(850px,calc(100vh - 120px))}.analysis-details,.result-more{border:1px solid #38556d;border-radius:9px;background:#172c40;padding:10px 13px;margin-top:14px}.analysis-details>summary,.result-more>summary{cursor:pointer;color:#b7e3f8;font-size:12px;font-weight:750}.analysis-details[open]>summary,.result-more[open]>summary{margin-bottom:14px}.result-more{background:#14283b}.result-more .result-row:first-of-type{padding-top:4px}.feasibility-panel .feasibility-card{padding:13px}.feasibility-panel .feasibility-card p{font-size:11px}.feasibility-footer{align-items:start}.feasibility-footer>.analysis-details{margin-top:0}.summary-panel{margin-top:16px}.summary-panel .analysis-details{margin-top:10px}@media(max-width:780px){.inputs-panel{max-height:none}}
+.feasibility-panel .feasibility-summary{margin:12px 0;padding:13px 16px}
+.feasibility-panel .feasibility-verdict{font-size:21px}
+.feasibility-brief{border:1px solid #38556d;border-radius:10px;overflow:hidden}
+.feasibility-brief-row{display:grid;grid-template-columns:minmax(120px,160px) 68px minmax(0,1fr);align-items:center;gap:14px;padding:11px 15px;background:#14283b;font-size:12px;border-bottom:1px solid #304960}
+.feasibility-brief-row:last-child{border-bottom:0}
+.feasibility-brief-row>strong{font-size:12px}
+.feasibility-brief-row>span:last-child{color:#c8dce9;font-variant-numeric:tabular-nums}
+.feasibility-brief-row.status-fail{border-left:3px solid #ef7984}
+.feasibility-brief-row.status-pass{border-left:3px solid #67cba3}
+.feasibility-brief-row.status-tbd{border-left:3px solid #87a6be}
+.feasibility-brief-row .status-pill{justify-self:start}
+.feasibility-conclusion{margin:15px 0 5px;font-size:13px;font-weight:700;color:#e4f2fb}
+.feasibility-note{margin:0;color:#9eb6c8;font-size:11px}
+@media(max-width:600px){.feasibility-brief-row{grid-template-columns:minmax(0,1fr) 68px;gap:5px 9px}.feasibility-brief-row>span:last-child{grid-column:1/-1}}
