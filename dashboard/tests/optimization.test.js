@@ -33,9 +33,12 @@ const calc=s=>{const r=A.calculate(s);assert.deepEqual(Array.from(r.errors),[]);
   assert.equal(o.candidates.length,19);
   assert.ok(o.candidates.every(c=>c.depthMm<=o.availableRootMm));
   assert.ok(o.candidates[0].rootCapAreaMm2>o.candidates.at(-1).rootCapAreaMm2);
-  assert.equal(o.overall,'INSUFFICIENT DATA');
+  assert.equal(o.overall,'CONDITIONALLY FEASIBLE');
+  assert.equal(o.thicknessBasis,'NACA4_ASSUMED');
+  assert.ok(o.recommended);
+  assert.ok(Math.abs(o.rootCapWidthMm-r.state.wing.rootChord*1000*r.state.sparDesign.capWidthRatio)<1e-9);
   const s=inha();s.sparDesign.requestedDepthMm=100;
-  assert.equal(calc(s).optimization.overall,'INSUFFICIENT DATA','old manual depth must not fail baseline');
+  assert.equal(calc(s).optimization.overall,'CONDITIONALLY FEASIBLE','old manual depth must not fail baseline');
 }
 {
   const base=calc(built()),higher= built();higher.aircraft.nLimit*=1.2;
@@ -72,8 +75,10 @@ const calc=s=>{const r=A.calculate(s);assert.deepEqual(Array.from(r.errors),[]);
 }
 {
   const a=A.assessFeasibility(calc(inha()));
-  assert.equal(a.verdict,'입력 부족');
-  assert.deepEqual(Array.from(a.cards,c=>c.status),['TBD','PASS','TBD']);
+  assert.equal(a.verdict,'경험식 기준 가능');
+  assert.deepEqual(Array.from(a.cards,c=>c.status),['PASS','PASS','PASS']);
+  assert.equal(a.scenarios.length,3);
+  assert.ok(a.scenarios.every(item=>item.candidate));
   const s=built(),initial=calc(s);
   for(const key of Object.keys(s.weightBudget))s.weightBudget[key]=0;
   s.weightBudget.wingStructure=initial.weight.raymerWing+0.1;
@@ -85,5 +90,19 @@ const calc=s=>{const r=A.calculate(s);assert.deepEqual(Array.from(r.errors),[]);
   const fail=A.assessFeasibility(calc(s));
   assert.equal(fail.verdict,'경험식 기준 불가능');
   assert.equal(fail.cards[2].status,'FAIL');
+}
+{
+  const thin=inha();thin.wing.tc=0.03;
+  const failed=A.assessFeasibility(calc(thin));
+  assert.equal(failed.verdict,'경험식 기준 불가능');
+  assert.equal(failed.cards[2].status,'FAIL');
+  const uncertain=inha();uncertain.wing.tc=0.06;
+  const mixed=A.assessFeasibility(calc(uncertain));
+  assert.equal(mixed.verdict,'입력 부족');
+  assert.equal(mixed.cards[2].status,'TBD');
+  const reducedTarget=inha();reducedTarget.feasibility.designTarget=10;
+  assert.equal(A.assessFeasibility(calc(reducedTarget)).cards[0].status,'FAIL');
+  const invalid=inha();invalid.sparDesign.sparXc=1.1;
+  assert.ok(A.calculate(invalid).errors.some(message=>message.includes('x/c')));
 }
 console.log('Automatic spar sizing tests passed');
