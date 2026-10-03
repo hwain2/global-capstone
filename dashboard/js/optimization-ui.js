@@ -1,4 +1,33 @@
 window.AST = window.AST || {};
+AST.sparSectionSVG=function(r,pick){
+  const o=r.optimization,s=r.state,fmt=AST.fmt,esc=AST.escape;
+  const rootChordMm=s.wing.rootChord*1000,scaleY=90/o.rootMaxThicknessMm;
+  const point=x=>[20+280*x,75-AST.naca4ThicknessFactor(Math.max(.0001,x))*45];
+  const top=Array.from({length:51},(_,i)=>point(i/50));
+  const outline='M '+top.map(([x,y])=>x.toFixed(1)+' '+y.toFixed(1)).join(' L ')+
+    ' L '+top.slice().reverse().map(([x,y])=>x.toFixed(1)+' '+(150-y).toFixed(1)).join(' L ')+' Z';
+  const x=20+280*s.sparDesign.sparXc,available=o.availableRootMm*scaleY;
+  const depth=pick?pick.depthMm*scaleY:0;
+  const cap=pick?.rootCapThicknessMm===null||!pick?null:pick.rootCapThicknessMm*scaleY;
+  const web=pick?.manufacturingStatus==='PASS'?pick.rootSelectedWebThicknessMm:null;
+  const webPx=web===null?null:Math.max(1,web*280/rootChordMm);
+  const capWidth=Math.max(3,o.rootCapWidthMm*280/rootChordMm);
+  const fitRatio=pick&&cap!==null?(pick.depthMm+pick.rootCapThicknessMm)/o.availableRootMm:null;
+  const fit=!pick||cap===null||web===null?'tbd':!pick.packagingPass||fitRatio>1?'fail':fitRatio>.8?'near':'pass';
+  const color={pass:'#64d9a0',near:'#f3c26f',fail:'#f1858d',tbd:'#97adc0'}[fit];
+  const status={pass:'장착 여유',near:'장착 여유 작음',fail:'장착 불가',tbd:'선정 단면 TBD'}[fit];
+  return `<div class="spar-section-compact"><svg viewBox="0 0 380 150" role="img" aria-label="${esc('익근 에어포일 개념 단면과 스파: '+status)}">
+    <path d="${outline}" fill="#254257" stroke="#78b4d2" stroke-width="2"/>
+    <rect x="${(x-capWidth/2-5).toFixed(1)}" y="${(75-available/2).toFixed(1)}" width="${(capWidth+10).toFixed(1)}" height="${available.toFixed(1)}" fill="#4c9baf28" stroke="#8bd0e2" stroke-width="1.5" stroke-dasharray="4 3"/>
+    ${pick&&cap!==null?`<rect x="${(x-capWidth/2).toFixed(1)}" y="${(75-depth/2-cap/2).toFixed(1)}" width="${capWidth.toFixed(1)}" height="${Math.max(1,cap).toFixed(1)}" fill="${color}"/>
+    <rect x="${(x-capWidth/2).toFixed(1)}" y="${(75+depth/2-cap/2).toFixed(1)}" width="${capWidth.toFixed(1)}" height="${Math.max(1,cap).toFixed(1)}" fill="${color}"/>
+    ${webPx===null?'':`<rect x="${(x-webPx/2).toFixed(1)}" y="${(75-depth/2).toFixed(1)}" width="${webPx.toFixed(1)}" height="${depth.toFixed(1)}" fill="${color}"/>`}
+    <path d="M${(x+capWidth/2+9).toFixed(1)} ${(75-depth/2).toFixed(1)} V${(75+depth/2).toFixed(1)}" stroke="${color}" stroke-width="2" marker-start="url(#spar-arrow)" marker-end="url(#spar-arrow)"/>`:`<text x="${x.toFixed(1)}" y="77" text-anchor="middle" fill="#d2e3ec" font-size="10">Cap / Web TBD</text>`}
+    <defs><marker id="spar-arrow" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto-start-reverse"><path d="M0 5 L2.5 0 L5 5" fill="${color}"/></marker></defs>
+    <text x="310" y="42" fill="#a9dcea" font-size="10">Available</text>
+    <text x="310" y="78" fill="${color}" font-size="10">Selected</text>
+  </svg><div class="spar-section-facts"><strong style="color:${color}">${status}</strong><span>Wing max thickness ${fmt(o.rootMaxThicknessMm,1)} mm</span><span>Available depth ${fmt(o.availableRootMm,1)} mm</span><span>Selected spar ${pick?fmt(pick.depthMm,1)+' mm':'TBD'}</span></div><small>Conceptual section based on t/c — actual airfoil geometry not applied</small></div>`;
+};
 AST.renderOptimization=function(r){
   const o=r.optimization,fmt=AST.fmt,esc=AST.escape;
   const pick=o.recommended||o.provisional;
@@ -15,7 +44,8 @@ AST.renderOptimization=function(r){
   const partialMass=pick?otherMass+Math.max(r.weight.raymerWing,wingMass??0,pick.massKg)+
     Math.max(r.weight.raymerFuse,r.state.weightBudget.fuselageStructure??0):null;
   const massImpact=pick?`경험식 주익·동체와 입력된 구성품의 중량 하한 ${fmt(partialMass,3)} kg · 스파 ${fmt(pick.massKg,3)} kg은 주익에 포함`:'TBD';
-  summary.innerHTML=`<div class="optimization-head"><div><span class="feasibility-verdict ${o.overall==='STRUCTURAL REDESIGN REQUIRED'?'status-structural-redesign-required':o.recommended?'status-pass':'status-tbd'}">${o.overall==='STRUCTURAL REDESIGN REQUIRED'?'현재 조건에서 해 없음':o.recommended?o.verifiedThickness?'최저 질량 추천안':'가정 기반 최저 질량 추천안':'잠정 후보 · 검증 보류'}</span><h3>${pick?fmt(pick.depthMm,1)+' mm':'사용 가능한 후보 없음'}</h3><p>익근 최대두께 상한 ${fmt(o.rootMaxThicknessMm,1)} mm · 사용 가능 깊이 ${fmt(o.availableRootMm,1)} mm · 탐색 ${fmt(o.candidates[0].depthMm,1)}–${fmt(o.candidates.at(-1).depthMm,1)} mm</p></div><p class="micro">${o.verifiedThickness?'입력한 스파 위치 두께를 사용했습니다.':`NACA 4계열 형상 가정 · x/c ${fmt(r.state.sparDesign.sparXc,2)} · 가용 깊이 활용률 ${fmt(r.state.sparDesign.depthFactor,2)}. 실제 익형 좌표는 후속 확인이 필요합니다.`}</p></div>`+
+  summary.innerHTML=`<div class="optimization-head"><div><span class="feasibility-verdict ${o.overall==='STRUCTURAL REDESIGN REQUIRED'?'status-structural-redesign-required':o.recommended?'status-pass':'status-tbd'}">${o.overall==='STRUCTURAL REDESIGN REQUIRED'?o.provisional?'강성 기준 미충족':'현재 조건에서 해 없음':o.recommended?o.verifiedThickness?'최저 질량 추천안':'가정 기반 최저 질량 추천안':'잠정 후보 · 검증 보류'}</span><h3>${pick?fmt(pick.depthMm,1)+' mm':'사용 가능한 후보 없음'}</h3><p>익근 최대두께 상한 ${fmt(o.rootMaxThicknessMm,1)} mm · 사용 가능 깊이 ${fmt(o.availableRootMm,1)} mm · 탐색 ${fmt(o.candidates[0].depthMm,1)}–${fmt(o.candidates.at(-1).depthMm,1)} mm</p></div><p class="micro">${o.verifiedThickness?'입력한 스파 위치 두께를 사용했습니다.':`NACA 4계열 형상 가정 · x/c ${fmt(r.state.sparDesign.sparXc,2)} · 가용 깊이 활용률 ${fmt(r.state.sparDesign.depthFactor,2)}. 실제 익형 좌표는 후속 확인이 필요합니다.`}</p></div>`+
+    AST.sparSectionSVG(r,pick)+
     (pick?`<div class="optimization-metrics"><div><span>익근 캡 면적 / 두께</span><strong>${fmt(pick.rootCapAreaMm2,2)} mm² 필요 · ${pick.rootCapThicknessMm===null?'선정 TBD':fmt(pick.rootCapThicknessMm*o.rootCapWidthMm,2)+' mm² 선정 / '+fmt(pick.rootCapThicknessMm,2)+' mm'}</strong></div><div><span>웹 두께</span><strong>${fmt(pick.rootWebThicknessMm,3)} mm 이론 · ${pick.manufacturingStatus==='PASS'?fmt(pick.rootSelectedWebThicknessMm,3)+' mm 선정':'TBD 선정'}</strong></div><div><span>양쪽 날개 스파 질량</span><strong>${fmt(pick.massKg,3)} kg ${pick.manufacturingStatus==='PASS'?'제작 최소값 반영':'이론 최소값'}</strong></div><div><span>강도 MS · 처짐</span><strong>${fmt(pick.strengthMargin,2)} · ${pick.predictedDeflectionMm===null?'TBD':fmt(pick.predictedDeflectionMm,1)+' mm'}</strong></div><div><span>주익 중량 / 경험식</span><strong>${wingMass===null?'Raymer '+fmt(r.weight.raymerWing,3)+' kg (추정)':fmt(wingMass,3)+' kg (입력)'}</strong></div><div><span>제작 최소값 질량 영향</span><strong>${pick.manufacturingStatus==='PASS'?'+'+fmt(pick.massKg-pick.theoreticalMassKg,3)+' kg':'TBD'}</strong></div></div>`:'')+
     `<p class="micro">${esc(massImpact)} · MTOW 잔여 상한(입력분 기준) ${pick?fmt(r.state.feasibility.mtowLimit-partialMass,3)+' kg':'TBD'}${knownCount<10?' · 미입력 구성품이 있어 MTOW PASS 판정 불가':''}</p><p class="micro">${missing.length?'상세 검증에 필요한 값: '+esc(missing.join(', ')):'캡 폭·최소두께 조건을 반영했습니다.'} ${!o.verifiedThickness?'캡 폭 비율·제작 최소두께는 구조팀 가정입니다.':''}</p>`;
   const chartDefs=[['optimizationMass','massKg','스파 질량 [kg]'],['optimizationCap','rootCapAreaMm2','익근 캡 필요 면적 [mm²]'],['optimizationWeb','rootWebThicknessMm','익근 웹 이론 두께 [mm]'],['optimizationDeflection','predictedDeflectionMm','날개끝 처짐 [mm]'],['optimizationMargin','strengthMargin','최소 Strength MS']];

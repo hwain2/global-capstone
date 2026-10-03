@@ -15,11 +15,17 @@ AST.assessFeasibility = function(r){
     trial.sparDesign.depthFactor=factor;
     return AST.optimizeSpar(trial,L);
   });
-  // Detailed stiffness remains in the automatic sizing study; this is an empirical strength/fit screen.
   const best=study=>study.candidates.filter(c=>c.packagingPass&&c.strengthPass&&c.manufacturingStatus==='PASS')
     .reduce((selected,c)=>!selected||c.massKg<selected.massKg?c:selected,null);
-  const scenarioCandidates=studies.map(best),sized=scenarioCandidates[1],successes=scenarioCandidates.filter(Boolean).length;
+  const bestWithStiffness=study=>study.candidates.filter(c=>c.eligible)
+    .reduce((selected,c)=>!selected||c.massKg<selected.massKg?c:selected,null);
+  const scenarioCandidates=studies.map(best),stiffCandidates=studies.map(bestWithStiffness);
+  const sized=stiffCandidates[1]||scenarioCandidates[1],successes=scenarioCandidates.filter(Boolean).length;
   const sparStatus=!o.buildInputsReady?'TBD':successes===studies.length?'PASS':successes===0?'FAIL':'TBD';
+  const stiffnessReady=s.material.elasticModulusGPa!==null&&s.feasibility.tipDeflectionLimitMm!==null;
+  const stiffSuccesses=stiffCandidates.filter(Boolean).length;
+  const stiffnessStatus=!stiffnessReady||!successes?'TBD':
+    stiffSuccesses===studies.length?'PASS':stiffSuccesses===0?'FAIL':'TBD';
   // Spar is already part of the Raymer wing estimate. Use the larger value as a lower bound, never their sum.
   const wingLower=Math.max(wing,sized?.massKg??0),structuralLower=wingLower+fuselage;
   const entries=Object.entries(b),complete=entries.every(([,value])=>value!==null);
@@ -51,14 +57,22 @@ AST.assessFeasibility = function(r){
       cause:sparStatus==='PASS'?'구조팀 가정 범위 모두에서 요구 단면이 날개 내부에 들어갑니다.':
         sparStatus==='FAIL'?'현재 가정 범위의 날개 내부에서 요구 단면을 확보할 수 없습니다.':'가정 깊이에 따라 가능 여부가 달라지거나 제작값이 누락됐습니다.',
       action:sparStatus==='FAIL'?'t/c 또는 익근 시위를 늘리고 스파 구조를 검토하세요.':
-        sparStatus==='TBD'?'깊이 활용률과 캡·웹 제작 가정을 확인하세요.':'실제 익형 두께와 상세 구조를 후속 검증하세요.'}
+        sparStatus==='TBD'?'깊이 활용률과 캡·웹 제작 가정을 확인하세요.':'실제 익형 두께와 상세 구조를 후속 검증하세요.'},
+    {title:'강성',status:stiffnessStatus,
+      value:`Tip deflection ${sized?.predictedDeflectionMm===null||!sized?'TBD':fmt(sized.predictedDeflectionMm,1)+' mm'} / Allowable ${s.feasibility.tipDeflectionLimitMm===null?'TBD':fmt(s.feasibility.tipDeflectionLimitMm,0)+' mm'}`,
+      criterion:'반날개 균일 제한 기동하중 · 캡/웹 EI · 날개끝 처짐',
+      margin:sized&&stiffnessReady?`처짐 여유 ${fmt(s.feasibility.tipDeflectionLimitMm-sized.predictedDeflectionMm,1)} mm`:'—',
+      cause:stiffnessStatus==='PASS'?'현재 날개 내부에서 허용 처짐을 만족하는 간이 스파 후보가 있습니다.':
+        stiffnessStatus==='FAIL'?'현재 날개 내부의 탐색 후보가 제한하중 처짐 기준을 만족하지 못합니다.':'탄성계수·허용 처짐 또는 구조 후보 확인이 필요합니다.',
+      action:stiffnessStatus==='FAIL'?'캡 강성, 익형 두께, 익근 시위 또는 스파 구조를 재검토하세요.':'E와 처짐 기준을 확인하세요.'}
   ];
   const verdict=cards.some(c=>c.status==='FAIL')?'경험식 기준 불가능':cards.some(c=>c.status==='TBD')?'입력 부족':'경험식 기준 가능';
   const conclusion=verdict==='경험식 기준 가능'?'구조팀 가정 범위에서 경험식·간이 스파 sizing 기준으로 Baseline 형상 사용 가능':
     sparStatus==='FAIL'?'현재 날개 내부에서 요구 스파 단면 확보 불가 → t/c 또는 익근 시위 수정 필요':
+    stiffnessStatus==='FAIL'?'제한 기동하중에서 날개끝 처짐 기준 초과 → 스파 강성 또는 날개 형상 수정 필요':
     weightStatus==='FAIL'?'중량 경험식 또는 중량 예산이 목표 초과 → 형상과 중량 배분 수정 필요':
     '깊이·제작 가정에 따라 스파 결과가 달라짐 → 구조팀 가정 확인 필요';
-  const note='구조팀 가정 기반 개념설계 판정입니다. 전체 MTOW와 처짐·좌굴·적층 등 상세 구조해석은 별도 검증이 필요합니다.';
+  const note='개념설계 경험식·간이 보 모델 판정입니다. E=70 GPa와 처짐 한계 25 mm는 구조팀 기본 가정입니다. 전체 MTOW·좌굴·적층·접합부·FEA는 별도 검증이 필요합니다.';
   return {cards,verdict,conclusion,note,lead:conclusion,actions:cards.filter(c=>c.status!=='PASS').map(c=>c.action),
     budget:{total:budgetTotal,missing:entries.filter(([,v])=>v===null).map(([k])=>AST.budgetLabels[k])},
     scenarios:factors.map((depthFactor,i)=>({depthFactor,candidate:scenarioCandidates[i]}))};
@@ -74,7 +88,7 @@ AST.renderFeasibility=function(r){
 };
 AST.renderFeasibilityErrors=function(){
   document.getElementById('feasibilityVerdict').innerHTML='<strong class="feasibility-verdict status-tbd">입력 부족</strong>';
-  document.getElementById('feasibilityCards').innerHTML=['구조중량','설계하중','스파 간이 Sizing'].map(title=>
+  document.getElementById('feasibilityCards').innerHTML=['구조중량','설계하중','스파 간이 Sizing','강성'].map(title=>
     `<div class="feasibility-brief-row status-tbd"><strong>${title}</strong><span class="status-pill status-tbd">TBD</span><span>입력값 확인 필요</span></div>`).join('');
   document.getElementById('feasibilityConclusion').textContent='입력 오류를 수정한 뒤 경험식 기준 판정을 확인하세요.';
   document.getElementById('feasibilityNote').textContent='본 판정은 개념설계 단계의 경험식/간이 모델 기준이며 상세 구조해석 결과가 아닙니다.';

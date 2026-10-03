@@ -6,12 +6,12 @@ AST.defaults = {
   fuselage: { length: 1.35, width: 0.34, height: 0.38, wettedArea: 2.1, ld: 3.75, lt: 0.85 },
   flight: { speed: 22, rho: 1.225, q: 296.45, cruiseCL: null, ld: null, gustSpeed: 7.5, liftSlope: 5.4, muG: 10 },
   landing: { drop: 0.3, stop: 0.08 },
-  material: { density: 1600, krw: 1, krf: 1, kinlet: 1, pmax: 1, capStress: 300, webStress: 80, elasticModulusGPa: null },
+  material: { density: 1600, krw: 1, krf: 1, kinlet: 1, pmax: 1, capStress: 300, webStress: 80, elasticModulusGPa: 70 },
   sparDesign: { depthFactor: 0.75, sparXc: 0.30, localThicknessMm: null, requestedDepthMm: null, selectedCapAreaMm2: null, selectedWebThicknessMm: null, capWidthRatio: 0.08, capWidthMm: null, manufacturingMinCapMm: 0.4, manufacturingMinWebMm: 0.4 },
   design: { source: 'ultimate', customLoad: null },
-  feasibility: { mtowLimit: 24.9, designTarget: 22.4, tipDeflectionMm: null, tipDeflectionLimitMm: null, stallSpeedLimit: 17, airfoilClMax: null },
+  feasibility: { mtowLimit: 24.9, designTarget: 22.4, tipDeflectionMm: null, tipDeflectionLimitMm: 25, stallSpeedLimit: 17, airfoilClMax: null },
   weightBudget: { wingStructure: null, fuselageStructure: null, tailStructure: null, landingGear: null, propulsion: null, battery: null, avionics: null, wiring: null, payload: null, other: null },
-  sources: { 'sparDesign.depthFactor':'ASSUMED', 'sparDesign.sparXc':'ASSUMED', 'sparDesign.capWidthRatio':'ASSUMED', 'sparDesign.manufacturingMinCapMm':'ASSUMED', 'sparDesign.manufacturingMinWebMm':'ASSUMED' },
+  sources: { 'sparDesign.depthFactor':'ASSUMED', 'sparDesign.sparXc':'ASSUMED', 'sparDesign.capWidthRatio':'ASSUMED', 'sparDesign.manufacturingMinCapMm':'ASSUMED', 'sparDesign.manufacturingMinWebMm':'ASSUMED', 'material.elasticModulusGPa':'ASSUMED', 'feasibility.tipDeflectionLimitMm':'ASSUMED' },
   display: { aircraft: true, lift: true, weight: true, shear: true, moment: true, gust: false, impact: false, spar: true, cg: true, dimensions: false },
   sensitivity: { equation: 'raymerWing', variable: 'wing.span', range: 20 }
 };
