@@ -1,4 +1,15 @@
 window.AST = window.AST || {};
+// NACA 4-series is an explicit conceptual proxy when airfoil coordinates are unavailable.
+// The polynomial returns full section thickness relative to c*(t/c) at a chosen x/c.
+AST.naca4ThicknessFactor = function(x){
+  return Math.min(1,10*(0.2969*Math.sqrt(x)-0.1260*x-0.3516*x*x+0.2843*x*x*x-0.1015*x*x*x*x));
+};
+AST.sparThicknessAt = function(s,chord){
+  const maximum=chord*s.wing.tc*1000;
+  return s.sparDesign.localThicknessMm===null?
+    maximum*AST.naca4ThicknessFactor(s.sparDesign.sparXc):
+    Math.min(maximum,s.sparDesign.localThicknessMm*chord/s.wing.rootChord);
+};
 AST.spar = function (s, loads) {
   const source=s.design.source, d=s.sparDesign;
   const load=source==='gust'?loads.gustUltimate:source==='custom'?s.design.customLoad:source==='landing'?loads.impact:loads.ultimate;
@@ -6,8 +17,7 @@ AST.spar = function (s, loads) {
   const rootShear=wingLoad===null?null:wingLoad/2;
   const rootMoment=wingLoad===null?null:wingLoad*s.wing.span/(3*Math.PI);
   const rootMaxThicknessMm=s.wing.rootChord*s.wing.tc*1000;
-  // Without airfoil coordinates, rootMaxThicknessMm is only an upper bound at the root.
-  const localThicknessMm=d.localThicknessMm===null?rootMaxThicknessMm:Math.min(d.localThicknessMm,rootMaxThicknessMm);
+  const localThicknessMm=AST.sparThicknessAt(s,s.wing.rootChord);
   const availableDepthMm=d.depthFactor===null?null:localThicknessMm*d.depthFactor;
   const depthConflict=availableDepthMm!==null && d.requestedDepthMm!==null && d.requestedDepthMm>availableDepthMm;
   const sizingDepthMm=availableDepthMm===null?null:Math.min(d.requestedDepthMm??availableDepthMm,availableDepthMm);

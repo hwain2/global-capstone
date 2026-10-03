@@ -6,7 +6,7 @@ AST.fields = [
   {group:'비행 조건',items:[['flight.speed','순항속도 V','m/s'],['flight.rho','공기밀도 ρ','kg/m³'],['flight.q','동압 q = ½ρV²','Pa'],['flight.cruiseCL','순항 CL','—'],['flight.ld','순항 L/D','—'],['flight.gustSpeed','돌풍속도 Ude','m/s'],['flight.liftSlope','양력곡선기울기 a','1/rad'],['flight.muG','돌풍 질량비 μg','—']]},
   {group:'착륙 조건',items:[['landing.drop','낙하 높이 h','m'],['landing.stop','정지 거리 s','m']]},
   {group:'재료·구조',items:[['material.density','재료 밀도','kg/m³'],['material.capStress','캡 허용응력','MPa'],['material.webStress','웹 허용전단응력','MPa'],['material.elasticModulusGPa','스파 탄성계수 E','GPa']]},
-  {group:'스파 자동 탐색 · STRUCT',items:[['sparDesign.depthFactor','깊이 활용률 (0~1)','—'],['sparDesign.localThicknessMm','스파 위치 익형두께','mm'],['sparDesign.capWidthMm','캡 폭','mm'],['sparDesign.manufacturingMinCapMm','제작 최소 캡 두께','mm'],['sparDesign.manufacturingMinWebMm','제작 최소 웹 두께','mm']]},
+  {group:'스파 자동 탐색 · STRUCT',items:[['sparDesign.depthFactor','깊이 활용률 (0~1)','—'],['sparDesign.sparXc','가정 스파 위치 x/c','—'],['sparDesign.localThicknessMm','실제 스파 위치 두께 (선택)','mm'],['sparDesign.capWidthRatio','가정 캡 폭 / 시위','—'],['sparDesign.capWidthMm','실제 캡 폭 (선택)','mm'],['sparDesign.manufacturingMinCapMm','가정 최소 캡 두께','mm'],['sparDesign.manufacturingMinWebMm','가정 최소 웹 두께','mm']]},
   {group:'기존 스파 단면 비교 · STRUCT',advanced:true,items:[['sparDesign.requestedDepthMm','기존 선정 스파 깊이','mm'],['sparDesign.selectedCapAreaMm2','기존 선정 캡 면적','mm²'],['sparDesign.selectedWebThicknessMm','기존 선정 웹 두께','mm']]},
   {group:'고급 계수',advanced:true,items:[['material.krw','Kρ,w','참고값'],['material.krf','Kρ,f','참고값'],['material.kinlet','K inlet','참고값'],['material.pmax','P max','참고값']]}
 ];
@@ -23,10 +23,10 @@ AST.inputSteps = Object.freeze({
   'material.density':5, 'material.krw':0.01, 'material.krf':0.01,
   'material.kinlet':0.01, 'material.pmax':0.01,
   'material.capStress':2, 'material.webStress':1, 'material.elasticModulusGPa':1,
-  'sparDesign.depthFactor':0.01, 'sparDesign.localThicknessMm':0.5,
+  'sparDesign.depthFactor':0.01, 'sparDesign.sparXc':0.01, 'sparDesign.localThicknessMm':0.5,
   'sparDesign.requestedDepthMm':0.5, 'sparDesign.selectedCapAreaMm2':0.1,
   'sparDesign.selectedWebThicknessMm':0.01, 'sparDesign.manufacturingMinWebMm':0.01,
-  'sparDesign.capWidthMm':0.5, 'sparDesign.manufacturingMinCapMm':0.01,
+  'sparDesign.capWidthRatio':0.01, 'sparDesign.capWidthMm':0.5, 'sparDesign.manufacturingMinCapMm':0.01,
   'design.customLoad':5,
   'feasibility.mtowLimit':0.1, 'feasibility.designTarget':0.1,
   'feasibility.tipDeflectionMm':0.5, 'feasibility.tipDeflectionLimitMm':0.5,
@@ -53,8 +53,8 @@ AST.resultDefs = [
   {section:'기체',label:'가로세로비',unit:'—',read:r=>r.state.wing.ar,equation:'날개폭 입력 시 AR = b² / S, AR 입력 시 b = √(AR × S).',status:'입력·계산값'},
   {section:'기체',label:'등가 직사각형 시위',unit:'m',read:r=>r.state.wing.equivChord,equation:'c equivalent = S / b.',status:'CALC'},
   {section:'기체',label:'익근 최대두께 상한',unit:'mm',read:r=>r.spar.rootMaxThicknessMm,equation:'h max,root = cr × (t/c) × 1000. 실제 스파 위치 두께가 아님.',status:'상한값 · 익형 검증 필요'},
-  {section:'중량',label:'Finger 공허중량',unit:'kg',read:r=>r.weight.finger,equation:'We = 0.699 × MTOW^0.949. MTOW와 We는 kg.',status:'전체 공허중량'},
-  {section:'중량',label:'Raymer 주익',unit:'kg',read:r=>r.weight.raymerWing,equation:'Ww = 0.036 Sw^0.758 Wfw^0.0035 (AR/cos²Λ)^0.6 q^0.006 λ^0.04 [100(t/c)/cosΛ]^−0.3 (Nult Wdg)^0.49. Sw는 ft², q는 psf, Wdg는 lb; 결과 lb를 kg으로 변환. 날개 내 연료 없음: Wfw = 1.',status:'경험식'},
+  {section:'중량',label:'Finger 공허중량',unit:'kg',read:r=>r.weight.finger,equation:'We = 0.699 × MTOW^0.949. MTOW와 We는 kg. 전체 공허중량 추정치이며 전체 기체 질량이 아님.',status:'전체 공허중량 추정'},
+  {section:'중량',label:'Raymer 주익',unit:'kg',read:r=>r.weight.raymerWing,equation:'Ww = 0.036 Sw^0.758 Wfw^0.0035 (AR/cos²Λ)^0.6 q^0.006 λ^0.04 [100(t/c)/cosΛ]^−0.3 (Nult Wdg)^0.49. Sw는 ft², q는 psf, Wdg는 lb; 결과 lb를 kg으로 변환. 날개 내 연료 없음: Wfw = 1.',status:'25 kg급 상대 비교용'},
   {section:'중량',label:'Sadraey 주익 식 값',unit:'참고값',read:r=>r.weight.sadraeyWing,equation:'Wwing = S c̄ (t/c)max ρmat Kρ,w [AR nult / cosΛc/4]^0.6 λ^0.04 g. 원문 식에 SI 입력값을 그대로 대입.',status:'계수·단위 검증 필요'},
   {section:'중량',label:'Raymer 동체',unit:'kg',read:r=>r.weight.raymerFuse,equation:'Wf = 0.052 Sf^1.086 (Nult Wdg)^0.177 Lt^−0.051 (l/d)^−0.072 q^0.241. Sf는 ft², Wdg는 lb, Lt는 ft, q는 psf; 결과 lb를 kg으로 변환.',status:'Lt 정의 검증 필요'},
   {section:'중량',label:'Sadraey 동체 식 값',unit:'참고값',read:r=>r.weight.sadraeyFuse,equation:'Wfuse = ρmat Kρ,f Pmax [((wmax + hmax)/2) lfuse]^1.2 nult^0.3 Kinlet g. 원문 식에 SI 입력값을 그대로 대입.',status:'계수·단위 검증 필요'},
@@ -72,23 +72,25 @@ AST.resultDefs = [
   {section:'하중',label:'음의 돌풍 등가하중',unit:'N',read:r=>r.loads.gustMinusLoad,equation:'L gust− = n gust− × W. 부호를 유지한 값.'},
   {section:'하중',label:'평균 착륙 충격력',unit:'N',read:r=>r.loads.impact,equation:'Favg = m g (1 + h/s).'},
   {section:'스파',label:'선택한 하중',unit:'N',read:r=>r.spar.load,equation:'극한 기동·극한 돌풍·착륙 평균 충격력 또는 사용자 지정 하중 중 선택. 착륙은 날개 하중 경로와 다름.'},
-  {section:'스파',label:'사용 가능 스파 깊이',unit:'mm',read:r=>r.spar.availableDepthMm,equation:'스파 위치 두께 × 깊이 활용률. 익형 두께 미입력 시 cr(t/c)를 상한으로 사용.',status:'익형 위치 두께 확인 필요'},
+  {section:'스파',label:'사용 가능 스파 깊이',unit:'mm',read:r=>r.spar.availableDepthMm,equation:'스파 위치 두께 × 깊이 활용률. 실제 위치 두께가 없으면 NACA 4계열 두께 분포식의 x/c 위치값을 형상 가정으로 사용.',status:'NACA 4계열 형상 가정'},
   {section:'스파',label:'선정 단면 최소 필요 깊이',unit:'mm',read:r=>r.spar.requiredDepthMm,equation:'max(|Mroot|×1000/(σallow×선정 캡 면적), |Vroot|/(τallow×선정 웹 두께)). 선정 단면의 강도상 최소 깊이이며 형상·좌굴 검증은 별도.',status:'STRUCT 단면 입력 필요'},
   {section:'스파',label:'루트 전단력',unit:'N',read:r=>r.spar.rootShear,equation:'각 반날개에서 Vroot = L / 2.'},
   {section:'스파',label:'루트 굽힘모멘트',unit:'N·m',read:r=>r.spar.rootMoment,equation:'타원 양력분포에서 Mroot = L b / (3π).'},
   {section:'스파',label:'필요 캡 면적',unit:'mm²',read:r=>r.spar.capAreaMm2,equation:'Acap ≥ |Mroot| / (σallow × 사용 가능 스파 깊이). 기존 스파 식을 사용.'},
   {section:'스파',label:'웹 이론 최소두께',unit:'mm',read:r=>r.spar.webThicknessMm,equation:'tweb ≥ |Vroot| / (τallow × 사용 가능 스파 깊이). 제작 가능한 최소 적층두께가 아님.',status:'제작 최소두께 별도 필요'},
-  {section:'스파',label:'제작 기준 채택 웹 두께',unit:'mm',read:r=>r.spar.adoptedWebThicknessMm,equation:'max(웹 이론 최소두께, 구조팀 제작 최소두께).',status:'STRUCT 입력 필요'}
+  {section:'스파',label:'제작 기준 채택 웹 두께',unit:'mm',read:r=>r.spar.adoptedWebThicknessMm,equation:'max(웹 이론 최소두께, 구조팀 가정 최소두께).',status:'제작 최소두께 가정'}
 ];
 AST.resultAssumptions={
   'Finger 공허중량':['aircraft.mass'],
   'Raymer 주익':['wing.taper','wing.sweep','wing.tc','aircraft.nLimit'],
   'Sadraey 주익 식 값':['wing.taper','wing.sweep','wing.tc','material.density','material.krw'],
   'Raymer 동체':['fuselage.wettedArea','fuselage.lt','fuselage.length','fuselage.width','fuselage.height'],
-  'Sadraey 동체 식 값':['fuselage.length','fuselage.width','fuselage.height','material.density','material.krf','material.pmax','material.kinlet']
+  'Sadraey 동체 식 값':['fuselage.length','fuselage.width','fuselage.height','material.density','material.krf','material.pmax','material.kinlet'],
+  '사용 가능 스파 깊이':['wing.tc','sparDesign.sparXc','sparDesign.depthFactor']
 };
 AST.resultMeta=function(d){
-  const paths=AST.resultAssumptions[d.label]||[];
+  const paths=d.label==='사용 가능 스파 깊이'&&AST.state.sparDesign.localThicknessMm!==null?
+    ['sparDesign.localThicknessMm','sparDesign.depthFactor']:AST.resultAssumptions[d.label]||[];
   const assumed=paths.filter(path=>['ASSUMED','TBD'].includes(AST.sourceFor(path)));
   const direct={'최대이륙질량':'aircraft.mass','날개폭':'wing.span','날개 면적':'wing.area','가로세로비':'wing.ar'};
   const source=d.section==='기체'&&direct[d.label]?AST.sourceFor(direct[d.label]):'CALC';
@@ -108,7 +110,8 @@ AST.fieldHTML = function([path,label,unit],advanced) {
   if(boolean)return `<label class="check-field"><input type="checkbox" data-path="${path}" ${val?'checked':''} ${locked?'disabled':''}><span>${AST.escape(label)}</span></label>`;
   const step=AST.inputSteps[path] ?? 'any';
   const optional=AST.get(AST.defaults,path)===null, derived=AST.isDerived(path);
-  return `<div class="field"><label for="input-${path}">${AST.escape(label)}${advanced || path==='fuselage.lt' ? '<span class="verify-icon"'+tip+'>?</span>':''}</label><span class="input-unit"><input id="input-${path}" type="number" inputmode="decimal" data-path="${path}" step="${step}" value="${val===null?'':AST.escape(val)}" placeholder="${optional?'미입력 · TBD':''}" title="증감 단위: ${step} ${AST.escape(unit)}" ${locked||derived?'readonly':''}><em>${AST.escape(unit)}</em></span><div class="field-source"><span>출처</span>${derived?'<span class="source-badge">CALC</span>':AST.sourceOptions(path)}</div></div>`;
+  const placeholder=['sparDesign.localThicknessMm','sparDesign.capWidthMm'].includes(path)?'미입력 시 구조팀 가정 적용':optional?'미입력 · TBD':'';
+  return `<div class="field"><label for="input-${path}">${AST.escape(label)}${advanced || path==='fuselage.lt' ? '<span class="verify-icon"'+tip+'>?</span>':''}</label><span class="input-unit"><input id="input-${path}" type="number" inputmode="decimal" data-path="${path}" step="${step}" value="${val===null?'':AST.escape(val)}" placeholder="${placeholder}" title="증감 단위: ${step} ${AST.escape(unit)}" ${locked||derived?'readonly':''}><em>${AST.escape(unit)}</em></span><div class="field-source"><span>출처</span>${derived?'<span class="source-badge">CALC</span>':AST.sourceOptions(path)}</div></div>`;
 };
 AST.buildInputs = function() {
   document.getElementById('inputGroups').innerHTML=AST.fields.map(g=>`<details class="input-group" ${['기체','주익','스파 자동 탐색 · STRUCT'].includes(g.group)?'open':''}><summary>${AST.escape(g.group)} <span>${g.items.length}</span></summary><div class="fields">${g.items.map(x=>AST.fieldHTML(x,g.advanced)).join('')}</div>${g.group==='주익'?'<p id="wingConsistency" class="micro wing-consistency" role="status"></p>':''}</details>`).join('')+

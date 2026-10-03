@@ -30,6 +30,10 @@ AST.validate = function (s) {
   }
   const factor=s.sparDesign.depthFactor;
   if(factor!==null && (!Number.isFinite(factor)||factor<=0||factor>1))errors.push('스파 깊이 활용률: 0보다 크고 1 이하여야 합니다.');
+  const sparXc=s.sparDesign.sparXc;
+  if(!Number.isFinite(sparXc)||sparXc<=0||sparXc>=1)errors.push('가정 스파 위치 x/c: 0과 1 사이로 입력하세요.');
+  const capWidthRatio=s.sparDesign.capWidthRatio;
+  if(!Number.isFinite(capWidthRatio)||capWidthRatio<=0||capWidthRatio>1)errors.push('가정 캡 폭 / 시위: 0보다 크고 1 이하여야 합니다.');
   for(const [key,n] of Object.entries(s.weightBudget))if(n!==null && (!Number.isFinite(n)||n<0))errors.push(key+': 중량은 0 이상이어야 합니다.');
   return errors;
 };

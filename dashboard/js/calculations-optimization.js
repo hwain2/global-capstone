@@ -1,6 +1,6 @@
 window.AST = window.AST || {};
 // Root-section sizing uses the same M/(sigma*h) and V/(tau*h) equations as AST.spar.
-// A future airfoil adapter may replace localThicknessAt(y) with thickness at spar x/c.
+// The airfoil proxy can be replaced by measured coordinates without changing candidate sizing.
 AST.optimizeSpar = function(s, loads) {
   const w=s.wing,d=s.sparDesign,mat=s.material,half=w.span/2;
   const designLoad=Math.max(loads.ultimate,loads.gustUltimate,
@@ -9,12 +9,11 @@ AST.optimizeSpar = function(s, loads) {
   const rootMaxThicknessMm=w.rootChord*w.tc*1000;
   const thicknessAt=y=>{
     const chord=w.rootChord+(w.tipChord-w.rootChord)*y/half;
-    const localThicknessAt=(d.localThicknessMm===null?chord*w.tc*1000:
-      d.localThicknessMm*chord/w.rootChord);
-    return {chordMm:chord*1000,thicknessMm:Math.min(localThicknessAt,chord*w.tc*1000)};
+    return {chordMm:chord*1000,thicknessMm:AST.sparThicknessAt(s,chord)};
   };
   const availableRootMm=thicknessAt(0).thicknessMm*d.depthFactor;
-  const buildInputsReady=d.capWidthMm!==null&&d.manufacturingMinCapMm!==null&&d.manufacturingMinWebMm!==null;
+  const capWidthAt=chordMm=>d.capWidthMm??chordMm*d.capWidthRatio;
+  const buildInputsReady=(d.capWidthMm!==null||d.capWidthRatio!==null)&&d.manufacturingMinCapMm!==null&&d.manufacturingMinWebMm!==null;
   const verifiedThickness=d.localThicknessMm!==null&&d.localThicknessMm<=rootMaxThicknessMm;
   const modulusReady=mat.elasticModulusGPa!==null;
   const deflectionLimit=s.feasibility.tipDeflectionLimitMm;
@@ -28,12 +27,13 @@ AST.optimizeSpar = function(s, loads) {
       const a=span[j],b=span[j+1],y=(a.y+b.y)/2,dy=b.y-a.y;
       const M=(a.moment+b.moment)/2,V=(a.shear+b.shear)/2;
       const {chordMm,thicknessMm}=thicknessAt(y);
+      const capWidthMm=capWidthAt(chordMm);
       const available=thicknessMm*d.depthFactor;
       const h=depthMm*thicknessMm/thicknessAt(0).thicknessMm;
       const capRequired=Math.abs(M)*1000/(mat.capStress*h);
       const webRequired=Math.abs(V)/(mat.webStress*h);
-      const selectedCapThickness=buildInputsReady?Math.max(capRequired/d.capWidthMm,d.manufacturingMinCapMm):null;
-      const selectedCapArea=buildInputsReady?selectedCapThickness*d.capWidthMm:capRequired;
+      const selectedCapThickness=buildInputsReady?Math.max(capRequired/capWidthMm,d.manufacturingMinCapMm):null;
+      const selectedCapArea=buildInputsReady?selectedCapThickness*capWidthMm:capRequired;
       const selectedWeb=buildInputsReady?Math.max(webRequired,d.manufacturingMinWebMm):webRequired;
       theoreticalUpper+=capRequired*1e-6*dy*mat.density;
       theoreticalWeb+=webRequired*h*1e-6*dy*mat.density;
@@ -42,8 +42,8 @@ AST.optimizeSpar = function(s, loads) {
       web+=selectedWeb*h*1e-6*dy*mat.density;
       // h is the cap-centroid spacing used by the existing bending equation.
       // Two cap laminates add one cap thickness to the outside-to-outside depth.
-      if(h>available+1e-8||buildInputsReady&&(d.capWidthMm>chordMm||
-          h+selectedCapThickness>available+1e-8||selectedCapThickness>=h||selectedWeb>d.capWidthMm))packaging=false;
+      if(h>available+1e-8||buildInputsReady&&(capWidthMm>chordMm||
+          h+selectedCapThickness>available+1e-8||selectedCapThickness>=h||selectedWeb>capWidthMm))packaging=false;
       const capActual=Math.abs(M)*1000/(selectedCapArea*h);
       const webActual=Math.abs(V)/(selectedWeb*h);
       maxCapStress=Math.max(maxCapStress,capActual);
@@ -60,7 +60,7 @@ AST.optimizeSpar = function(s, loads) {
     const rootM=Math.abs(span[0].moment),rootV=Math.abs(span[0].shear);
     rootCapArea=rootM*1000/(mat.capStress*depthMm);
     rootWebThickness=rootV/(mat.webStress*depthMm);
-    rootCapThickness=buildInputsReady?Math.max(rootCapArea/d.capWidthMm,d.manufacturingMinCapMm):null;
+    rootCapThickness=buildInputsReady?Math.max(rootCapArea/capWidthAt(w.rootChord*1000),d.manufacturingMinCapMm):null;
     rootSelectedWeb=buildInputsReady?Math.max(rootWebThickness,d.manufacturingMinWebMm):rootWebThickness;
     const massKg=2*(upper+lower+web),theoreticalMassKg=2*(2*theoreticalUpper+theoreticalWeb);
     const predictedDeflectionMm=modulusReady?deflection:null;
@@ -68,14 +68,14 @@ AST.optimizeSpar = function(s, loads) {
     if(Math.abs(minCapMS)<1e-9)minCapMS=0;
     if(Math.abs(minWebMS)<1e-9)minWebMS=0;
     const stiffnessPass=predictedDeflectionMm===null||deflectionLimit===null?null:predictedDeflectionMm<=deflectionLimit;
-    const eligible=verifiedThickness&&packaging&&strengthPass&&buildInputsReady&&stiffnessPass!==false;
+    const eligible=packaging&&strengthPass&&buildInputsReady&&stiffnessPass!==false;
     candidates.push({index:i,fraction,depthMm,availableRootMm,rootCapAreaMm2:rootCapArea,
       rootWebThicknessMm:rootWebThickness,rootCapThicknessMm:rootCapThickness,
       rootSelectedWebThicknessMm:rootSelectedWeb,upperCapMassKg:2*upper,lowerCapMassKg:2*lower,
       webMassKg:2*web,massKg,theoreticalMassKg,predictedDeflectionMm,
       capMargin:minCapMS,webMargin:minWebMS,strengthMargin:Math.min(minCapMS,minWebMS),
       capStressMpa:maxCapStress,webShearMpa:maxWebShear,
-      packagingPass:packaging,packagingStatus:verifiedThickness?(packaging?'PASS':'FAIL'):'TBD',
+      packagingPass:packaging,packagingStatus:packaging?'PASS':'FAIL',
       strengthPass,stiffnessPass,manufacturingStatus:buildInputsReady?'PASS':'TBD',
       maxCapThicknessMm:buildInputsReady?maxCapThickness:null,maxWebThicknessMm:maxWebThickness,
       eligible});
@@ -85,7 +85,8 @@ AST.optimizeSpar = function(s, loads) {
   const provisional=candidates.filter(c=>c.packagingPass&&c.strengthPass&&c.stiffnessPass!==false)
     .reduce((best,c)=>!best||c.massKg<best.massKg?c:best,null);
   const overall=recommended?verifiedThickness&&modulusReady&&deflectionLimit!==null?'PASS':'CONDITIONALLY FEASIBLE':
-    buildInputsReady&&verifiedThickness?'STRUCTURAL REDESIGN REQUIRED':'INSUFFICIENT DATA';
+    buildInputsReady?'STRUCTURAL REDESIGN REQUIRED':'INSUFFICIENT DATA';
   return {designLoad,availableRootMm,rootMaxThicknessMm,verifiedThickness,buildInputsReady,
+    rootCapWidthMm:capWidthAt(w.rootChord*1000),thicknessBasis:verifiedThickness?'INPUT':'NACA4_ASSUMED',
     candidates,recommended,provisional,overall,span};
 };

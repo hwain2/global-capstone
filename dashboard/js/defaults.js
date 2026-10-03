@@ -7,11 +7,11 @@ AST.defaults = {
   flight: { speed: 22, rho: 1.225, q: 296.45, cruiseCL: null, ld: null, gustSpeed: 7.5, liftSlope: 5.4, muG: 10 },
   landing: { drop: 0.3, stop: 0.08 },
   material: { density: 1600, krw: 1, krf: 1, kinlet: 1, pmax: 1, capStress: 300, webStress: 80, elasticModulusGPa: null },
-  sparDesign: { depthFactor: 0.75, localThicknessMm: null, requestedDepthMm: null, selectedCapAreaMm2: null, selectedWebThicknessMm: null, capWidthMm: null, manufacturingMinCapMm: null, manufacturingMinWebMm: null },
+  sparDesign: { depthFactor: 0.75, sparXc: 0.30, localThicknessMm: null, requestedDepthMm: null, selectedCapAreaMm2: null, selectedWebThicknessMm: null, capWidthRatio: 0.08, capWidthMm: null, manufacturingMinCapMm: 0.4, manufacturingMinWebMm: 0.4 },
   design: { source: 'ultimate', customLoad: null },
   feasibility: { mtowLimit: 24.9, designTarget: 22.4, tipDeflectionMm: null, tipDeflectionLimitMm: null, stallSpeedLimit: 17, airfoilClMax: null },
   weightBudget: { wingStructure: null, fuselageStructure: null, tailStructure: null, landingGear: null, propulsion: null, battery: null, avionics: null, wiring: null, payload: null, other: null },
-  sources: {},
+  sources: { 'sparDesign.depthFactor':'ASSUMED', 'sparDesign.sparXc':'ASSUMED', 'sparDesign.capWidthRatio':'ASSUMED', 'sparDesign.manufacturingMinCapMm':'ASSUMED', 'sparDesign.manufacturingMinWebMm':'ASSUMED' },
   display: { aircraft: true, lift: true, weight: true, shear: true, moment: true, gust: false, impact: false, spar: true, cg: true, dimensions: false },
   sensitivity: { equation: 'raymerWing', variable: 'wing.span', range: 20 }
 };

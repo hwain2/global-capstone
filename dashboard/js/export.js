@@ -16,11 +16,12 @@ AST.exportCSV = function (r) {
     rows.push([d.section,d.label,Number.isFinite(value)?String(value):'',d.unit,meta.source,value===null?'TBD':meta.status,'',meta.note]);
   });
   const o=r.optimization;
-  rows.push(['스파 자동 탐색','판정',o.overall,'','CALC',o.overall,'',o.verifiedThickness?'스파 위치 두께 입력':'t/c 상한 사용 · 실제 두께 검증 필요']);
-  for(const c of o.candidates)rows.push(['스파 후보',`후보 ${c.index+1}: 깊이 ${c.depthMm.toFixed(3)} mm`,c.massKg.toFixed(6),'kg','CALC',c.eligible?'추천 가능':c.packagingStatus==='TBD'||c.manufacturingStatus==='TBD'?'TBD':'부적합',
+  rows.push(['스파 자동 탐색','판정',o.overall,'','CALC',o.overall,'',o.verifiedThickness?'스파 위치 두께 입력':'NACA 4계열 두께 분포 가정 · 실제 익형 검증 필요']);
+  for(const c of o.candidates)rows.push(['스파 후보',`후보 ${c.index+1}: 깊이 ${c.depthMm.toFixed(3)} mm`,c.massKg.toFixed(6),'kg','CALC',c.eligible?o.verifiedThickness?'추천 가능':'가정 기반 추천 가능':c.packagingStatus==='TBD'||c.manufacturingStatus==='TBD'?'TBD':'부적합',
     c.strengthMargin.toFixed(4),`캡 필요 ${c.rootCapAreaMm2.toFixed(3)} mm² · 웹 이론 ${c.rootWebThicknessMm.toFixed(4)} mm · 처짐 ${c.predictedDeflectionMm===null?'TBD':c.predictedDeflectionMm.toFixed(3)+' mm'} · 장착 ${c.packagingStatus} · 제작 ${c.manufacturingStatus}`]);
   const assessment=AST.assessFeasibility(r);
   rows.push(['Baseline Feasibility','종합 판정',assessment.verdict,'','CALC',assessment.verdict,'',assessment.lead]);
+  assessment.scenarios.forEach(item=>rows.push(['Baseline Feasibility','깊이 활용률 가정',item.depthFactor.toFixed(2),'—','ASSUMED',item.candidate?'PASS':'FAIL','',item.candidate?'스파 질량 '+item.candidate.massKg.toFixed(3)+' kg':'간이 스파 단면 없음']));
   assessment.cards.forEach(card=>rows.push(['Baseline Feasibility',card.title,card.value,'','CALC',card.status,card.margin,`기준: ${card.criterion} · 원인: ${card.cause} · 조치: ${card.action}`]));
   const csv=rows.map(row=>row.map(v=>'"'+String(v).replaceAll('"','""')+'"').join(',')).join('\r\n');
   AST.download('항공기-계산결과.csv','\uFEFF'+csv,'text/csv;charset=utf-8');
