@@ -119,6 +119,7 @@ const calc=s=>{const r=A.calculate(s);assert.deepEqual(Array.from(r.errors),[]);
   const relaxed=built();relaxed.feasibility.tipDeflectionLimitMm=null;
   const r=calc(relaxed);
   assert.equal(A.assessFeasibility(r).cards[3].status,'TBD');
+  assert.ok(A.assessFeasibility(r).note.includes('허용 처짐 TBD'));
   const greaterFS=built();greaterFS.aircraft.fs=2;
   const fsResult=calc(greaterFS);
   assert.equal(fsResult.optimization.deflectionLoad,limit.optimization.deflectionLoad,
