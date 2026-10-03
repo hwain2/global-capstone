@@ -63,7 +63,11 @@ AST.optimizeSpar = function(s, loads) {
         deflection+=limitMoment*(half-y)/(mat.elasticModulusGPa*1e9*I*1e-12)*dy*1000;
       }
     }
-    if(buildInputsReady&&modulusReady&&deflectionLimit!==null&&packaging&&deflection>deflectionLimit){
+    // Find the stiffness-required cap within this preliminary family: every
+    // spanwise cap grows by the same factor from its strength/manufacturing minimum.
+    // Keep an oversized result as a diagnostic; packaging is checked afterward.
+    const strengthOnlyDeflectionMm=modulusReady?deflection:null;
+    if(buildInputsReady&&modulusReady&&deflectionLimit!==null&&deflection>deflectionLimit){
       const evaluateScale=scale=>{
         let up=0,lo=0,wb=0,bend=0,fit=true,minCap=Infinity,maxCap=0,thick=0;
         for(const p of segments){
@@ -82,28 +86,33 @@ AST.optimizeSpar = function(s, loads) {
         }
         return {up,lo,wb,bend,fit,minCap,maxCap,thick};
       };
-      const maxScale=Math.min(...segments.map(p=>Math.min(
-        (p.available-p.h)/p.selectedCapThickness,p.h/p.selectedCapThickness)))*0.999999;
-      if(maxScale>1){
-        const maximum=evaluateScale(maxScale);
-        if(maximum.fit&&maximum.bend<=deflectionLimit){
-          let lo=1,hi=maxScale;
-          for(let k=0;k<35;k++){
-            const mid=(lo+hi)/2;
-            if(evaluateScale(mid).bend<=deflectionLimit)hi=mid;else lo=mid;
-          }
-          capScale=hi;
-          const sized=evaluateScale(capScale);
-          upper=sized.up;lower=sized.lo;web=sized.wb;deflection=sized.bend;
-          packaging=sized.fit;minCapMS=sized.minCap;maxCapStress=sized.maxCap;
-          maxCapThickness=sized.thick;
+      let lo=1,hi=2;
+      while(evaluateScale(hi).bend>deflectionLimit&&hi<1048576)hi*=2;
+      if(evaluateScale(hi).bend<=deflectionLimit){
+        for(let k=0;k<40;k++){
+          const mid=(lo+hi)/2;
+          if(evaluateScale(mid).bend<=deflectionLimit)hi=mid;else lo=mid;
         }
+        capScale=hi;
+        const sized=evaluateScale(capScale);
+        upper=sized.up;lower=sized.lo;web=sized.wb;deflection=sized.bend;
+        packaging=packaging&&sized.fit;minCapMS=sized.minCap;maxCapStress=sized.maxCap;
+        maxCapThickness=sized.thick;
       }
     }
     const rootM=Math.abs(span[0].moment),rootV=Math.abs(span[0].shear);
     rootCapArea=rootM*1000/(mat.capStress*depthMm);
     rootWebThickness=rootV/(mat.webStress*depthMm);
     rootCapThickness=buildInputsReady?Math.max(rootCapArea/capWidthAt(w.rootChord*1000),d.manufacturingMinCapMm)*capScale:null;
+    const rootSelectedCapArea=rootCapThickness===null?null:rootCapThickness*capWidthAt(w.rootChord*1000);
+    const rootWebForEI=buildInputsReady?Math.max(rootWebThickness,d.manufacturingMinWebMm):rootWebThickness;
+    const requiredEINm2=deflectionLimit===null?null:
+      (uniformLimitLoadNPerM*half)*half**3/(8*deflectionLimit/1000);
+    const rootAnalyticStiffnessCapArea=requiredEINm2===null||!modulusReady?null:
+      Math.max(0,2*(requiredEINm2/(mat.elasticModulusGPa*1e9)*1e12-
+        rootWebForEI*depthMm**3/12)/depthMm**2);
+    const rootStiffnessCapArea=buildInputsReady&&modulusReady&&deflectionLimit!==null?
+      (capScale>1?rootSelectedCapArea:Math.min(rootSelectedCapArea,rootAnalyticStiffnessCapArea)):null;
     rootSelectedWeb=buildInputsReady?Math.max(rootWebThickness,d.manufacturingMinWebMm):rootWebThickness;
     const massKg=2*(upper+lower+web),theoreticalMassKg=2*(2*theoreticalUpper+theoreticalWeb);
     const predictedDeflectionMm=modulusReady?deflection:null;
@@ -112,10 +121,13 @@ AST.optimizeSpar = function(s, loads) {
     if(Math.abs(minWebMS)<1e-9)minWebMS=0;
     const stiffnessPass=predictedDeflectionMm===null||deflectionLimit===null?null:predictedDeflectionMm<=deflectionLimit+1e-6;
     const eligible=packaging&&strengthPass&&buildInputsReady&&stiffnessPass!==false;
+    const packagingRatio=rootCapThickness===null?null:(depthMm+rootCapThickness)/availableRootMm;
     candidates.push({index:i,fraction,depthMm,availableRootMm,rootCapAreaMm2:rootCapArea,
+      rootStiffnessCapAreaMm2:rootStiffnessCapArea,rootSelectedCapAreaMm2:rootSelectedCapArea,
+      rootAnalyticStiffnessCapAreaMm2:rootAnalyticStiffnessCapArea,requiredEINm2,
       rootWebThicknessMm:rootWebThickness,rootCapThicknessMm:rootCapThickness,
       rootSelectedWebThicknessMm:rootSelectedWeb,upperCapMassKg:2*upper,lowerCapMassKg:2*lower,
-      webMassKg:2*web,massKg,theoreticalMassKg,predictedDeflectionMm,capScale,
+      webMassKg:2*web,massKg,theoreticalMassKg,predictedDeflectionMm,strengthOnlyDeflectionMm,capScale,packagingRatio,
       capMargin:minCapMS,webMargin:minWebMS,strengthMargin:Math.min(minCapMS,minWebMS),
       capStressMpa:maxCapStress,webShearMpa:maxWebShear,
       packagingPass:packaging,packagingStatus:packaging?'PASS':'FAIL',
@@ -125,12 +137,17 @@ AST.optimizeSpar = function(s, loads) {
   }
   const feasible=candidates.filter(c=>c.eligible);
   const recommended=feasible.reduce((best,c)=>!best||c.massKg<best.massKg?c:best,null);
-  const provisional=candidates.filter(c=>c.packagingPass&&c.strengthPass)
+  const provisional=candidates.filter(c=>c.strengthPass&&c.stiffnessPass!==false)
     .reduce((best,c)=>!best||c.massKg<best.massKg?c:best,null);
-  const overall=recommended?verifiedThickness&&modulusReady&&deflectionLimit!==null?'PASS':'CONDITIONALLY FEASIBLE':
-    buildInputsReady?'STRUCTURAL REDESIGN REQUIRED':'INSUFFICIENT DATA';
+  const empiricalWingMassKg=AST.weight(s).raymerWing;
+  const comparison=recommended||provisional;
+  const sparToWingRatio=comparison?comparison.massKg/empiricalWingMassKg:null;
+  const overall=!buildInputsReady||!modulusReady||deflectionLimit===null?'INSUFFICIENT INPUT':
+    recommended&&recommended.massKg<empiricalWingMassKg?
+      'FEASIBLE BY EMPIRICAL MODEL':'NOT FEASIBLE BY EMPIRICAL MODEL';
   return {designLoad,deflectionLoad:s.aircraft.nLimit*loads.weight,
     availableRootMm,rootMaxThicknessMm,verifiedThickness,buildInputsReady,
+    empiricalWingMassKg,sparToWingRatio,
     rootCapWidthMm:capWidthAt(w.rootChord*1000),thicknessBasis:verifiedThickness?'INPUT':'NACA4_ASSUMED',
     candidates,recommended,provisional,overall,span};
 };

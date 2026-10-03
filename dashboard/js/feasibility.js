@@ -7,25 +7,12 @@ AST.budgetLabels = {
 AST.assessFeasibility = function(r){
   const s=r.state,b=s.weightBudget,o=r.optimization,L=r.loads,fmt=AST.fmt;
   const wing=r.weight.raymerWing,fuselage=r.weight.raymerFuse,empty=r.weight.finger;
-  const factors=[s.sparDesign.depthFactor-0.1,s.sparDesign.depthFactor,s.sparDesign.depthFactor+0.1]
-    .map(v=>Math.min(1,Math.max(0.01,v)));
-  const studies=factors.map(factor=>{
-    if(Math.abs(factor-s.sparDesign.depthFactor)<1e-10)return o;
-    const trial=AST.clone(s);
-    trial.sparDesign.depthFactor=factor;
-    return AST.optimizeSpar(trial,L);
-  });
-  const best=study=>study.candidates.filter(c=>c.packagingPass&&c.strengthPass&&c.manufacturingStatus==='PASS')
-    .reduce((selected,c)=>!selected||c.massKg<selected.massKg?c:selected,null);
-  const bestWithStiffness=study=>study.candidates.filter(c=>c.eligible)
-    .reduce((selected,c)=>!selected||c.massKg<selected.massKg?c:selected,null);
-  const scenarioCandidates=studies.map(best),stiffCandidates=studies.map(bestWithStiffness);
-  const sized=stiffCandidates[1]||scenarioCandidates[1],successes=scenarioCandidates.filter(Boolean).length;
-  const sparStatus=!o.buildInputsReady?'TBD':successes===studies.length?'PASS':successes===0?'FAIL':'TBD';
+  const sized=o.recommended||o.provisional;
+  const inputsReady=o.buildInputsReady&&s.material.elasticModulusGPa!==null&&
+    s.feasibility.tipDeflectionLimitMm!==null;
+  const sparStatus=!inputsReady?'TBD':o.recommended?'PASS':'FAIL';
   const stiffnessReady=s.material.elasticModulusGPa!==null&&s.feasibility.tipDeflectionLimitMm!==null;
-  const stiffSuccesses=stiffCandidates.filter(Boolean).length;
-  const stiffnessStatus=!stiffnessReady||!successes?'TBD':
-    stiffSuccesses===studies.length?'PASS':stiffSuccesses===0?'FAIL':'TBD';
+  const stiffnessStatus=!stiffnessReady||!sized?'TBD':sized.stiffnessPass?'PASS':'FAIL';
   // Spar is already part of the Raymer wing estimate. Use the larger value as a lower bound, never their sum.
   const wingLower=Math.max(wing,sized?.massKg??0),structuralLower=wingLower+fuselage;
   const entries=Object.entries(b),complete=entries.every(([,value])=>value!==null);
@@ -33,17 +20,18 @@ AST.assessFeasibility = function(r){
   const otherKnown=entries.filter(([key,value])=>key!=='wingStructure'&&key!=='fuselageStructure'&&value!==null)
     .reduce((sum,[,value])=>sum+value,0);
   const knownLower=otherKnown+Math.max(wingLower,b.wingStructure??0)+Math.max(fuselage,b.fuselageStructure??0);
-  const empiricalFail=empty>s.feasibility.designTarget || empty>s.feasibility.mtowLimit || structuralLower>empty;
+  const empiricalFail=empty>s.feasibility.designTarget || empty>s.feasibility.mtowLimit ||
+    structuralLower>empty || (sized&&sized.massKg>=wing);
   const budgetFail=knownLower>s.feasibility.mtowLimit || complete &&
     (budgetTotal>s.feasibility.mtowLimit || b.wingStructure<wingLower || b.fuselageStructure<fuselage);
-  const weightStatus=empiricalFail||budgetFail?'FAIL':'PASS';
+  const weightStatus=!inputsReady||!sized?'TBD':empiricalFail||budgetFail?'FAIL':'PASS';
   const governing=Math.max(L.ultimate,L.gustUltimate);
   const loadStatus=Number.isFinite(o.designLoad)&&o.designLoad>=governing-1e-8?'PASS':'TBD';
   const cards=[
-    {title:'구조중량',status:weightStatus,value:`Wing ${fmt(wing)} kg / Fuselage ${fmt(fuselage)} kg`,
+    {title:'구조중량',status:weightStatus,value:`Wing ${fmt(wing)} kg / Spar ${sized?fmt(sized.massKg):'TBD'} kg`,
       criterion:`Finger 공허중량 ${fmt(empty)} kg ≤ 설계 목표 ${fmt(s.feasibility.designTarget,1)} kg; 구조 하한 ${fmt(structuralLower)} kg ≤ 공허중량. 전체 MTOW는 별도.`,
       margin:`공허중량 추정 여유 ${fmt(s.feasibility.designTarget-empty)} kg`,
-      cause:weightStatus==='PASS'?'경험식 공허중량과 주익·동체·스파 중량 하한이 초기 목표 범위 안에 있습니다. 전체 구성품 MTOW는 미검증입니다.':
+      cause:weightStatus==='PASS'?'경험식 주익 중량에 스파가 포함되어 있으며 추정 스파 질량이 전체 주익 경험식 중량보다 작습니다. 전체 구성품 MTOW는 미검증입니다.':
         '경험식 공허중량, 구조중량 하한 또는 입력된 중량 예산이 목표를 초과합니다.',
       action:weightStatus==='PASS'?'추진계·배터리·탑재물 질량이 확정되면 전체 MTOW를 확인하세요.':'중량 목표와 형상·구조 중량 가정을 검토하세요.'},
     {title:'설계하중',status:loadStatus,value:`Ultimate lift ${fmt(o.designLoad/1000,2)} kN`,
@@ -51,11 +39,11 @@ AST.assessFeasibility = function(r){
       margin:'—',cause:loadStatus==='PASS'?'지배 극한하중을 자동 sizing에 반영했습니다.':'지배 날개 하중을 산정할 수 없습니다.',
       action:loadStatus==='PASS'?'하중 조건의 입력 근거를 확인하세요.':'기동·돌풍 하중 입력을 확인하세요.'},
     {title:'스파 간이 Sizing',status:sparStatus,
-      value:`Available ${fmt(o.availableRootMm,1)} mm / ${sized?'Selected '+fmt(sized.depthMm,1)+' mm':o.provisional?'잠정 '+fmt(o.provisional.depthMm,1)+' mm':'해 없음'}`,
-      criterion:`가정 깊이 활용률 ${factors.map(v=>fmt(v,2)).join(' / ')}에서 캡·웹 강도, 장착, 최소두께 확인`,
+      value:`Available ${fmt(o.availableRootMm,1)} mm / ${sized?(o.recommended?'Selected ':'Required ')+fmt(sized.depthMm,1)+' mm':'해 없음'}`,
+      criterion:'선정 캡·웹의 강도, 강성, 내부 공간 및 제작 최소두께 확인',
       margin:sized?`Spar ${fmt(sized.massKg,3)} kg`:sparStatus==='FAIL'?'가정 범위에서 장착 가능한 단면 없음':'가정 범위에 따라 판정 변경',
-      cause:sparStatus==='PASS'?'구조팀 가정 범위 모두에서 요구 단면이 날개 내부에 들어갑니다.':
-        sparStatus==='FAIL'?'현재 가정 범위의 날개 내부에서 요구 단면을 확보할 수 없습니다.':'가정 깊이에 따라 가능 여부가 달라지거나 제작값이 누락됐습니다.',
+      cause:sparStatus==='PASS'?'선정한 강도·강성 충족 단면이 개념 내부 공간에 들어갑니다.':
+        sparStatus==='FAIL'?'강성까지 만족하는 스파 단면이 현재 개념 내부 공간에 들어가지 않습니다.':'필수 제작값이나 강성 입력이 누락됐습니다.',
       action:sparStatus==='FAIL'?'t/c 또는 익근 시위를 늘리고 스파 구조를 검토하세요.':
         sparStatus==='TBD'?'깊이 활용률과 캡·웹 제작 가정을 확인하세요.':'실제 익형 두께와 상세 구조를 후속 검증하세요.'},
     {title:'강성',status:stiffnessStatus,
@@ -66,18 +54,18 @@ AST.assessFeasibility = function(r){
         stiffnessStatus==='FAIL'?'현재 날개 내부의 탐색 후보가 제한하중 처짐 기준을 만족하지 못합니다.':'탄성계수·허용 처짐 또는 구조 후보 확인이 필요합니다.',
       action:stiffnessStatus==='FAIL'?'캡 강성, 익형 두께, 익근 시위 또는 스파 구조를 재검토하세요.':'E와 처짐 기준을 확인하세요.'}
   ];
-  const verdict=cards.some(c=>c.status==='FAIL')?'경험식 기준 불가능':cards.some(c=>c.status==='TBD')?'입력 부족':'경험식 기준 가능';
+  const verdict=!inputsReady?'입력 부족':cards.some(c=>c.status==='FAIL')?'경험식 기준 불가능':'경험식 기준 가능';
   const conclusion=verdict==='경험식 기준 가능'?'구조팀 가정 범위에서 경험식·간이 스파 sizing 기준으로 Baseline 형상 사용 가능':
-    sparStatus==='FAIL'?'현재 날개 내부에서 요구 스파 단면 확보 불가 → t/c 또는 익근 시위 수정 필요':
+    sparStatus==='FAIL'?'강도·강성 동시 만족 스파가 현재 날개 내부공간을 초과함 → t/c·익근 시위 또는 스파 구조 수정 필요':
     stiffnessStatus==='FAIL'?'제한 기동하중에서 날개끝 처짐 기준 초과 → 스파 강성 또는 날개 형상 수정 필요':
+    sized&&sized.massKg>=wing?'필요 스파 질량이 주익 전체 경험식 중량 이상 → 현재 경험식 기준 형상 재검토 필요':
     weightStatus==='FAIL'?'중량 경험식 또는 중량 예산이 목표 초과 → 형상과 중량 배분 수정 필요':
     '깊이·제작 가정에 따라 스파 결과가 달라짐 → 구조팀 가정 확인 필요';
   const modulusText=s.material.elasticModulusGPa===null?'TBD':fmt(s.material.elasticModulusGPa,1)+' GPa';
   const limitText=s.feasibility.tipDeflectionLimitMm===null?'TBD':fmt(s.feasibility.tipDeflectionLimitMm,0)+' mm';
   const note=`개념설계 경험식·간이 보 모델 판정입니다. E ${modulusText} [${s.sources['material.elasticModulusGPa']||'ASSUMED'}], 허용 처짐 ${limitText} [${s.sources['feasibility.tipDeflectionLimitMm']||'ASSUMED'}]. 전체 MTOW·좌굴·적층·접합부·FEA는 별도 검증이 필요합니다.`;
   return {cards,verdict,conclusion,note,lead:conclusion,actions:cards.filter(c=>c.status!=='PASS').map(c=>c.action),
-    budget:{total:budgetTotal,missing:entries.filter(([,v])=>v===null).map(([k])=>AST.budgetLabels[k])},
-    scenarios:factors.map((depthFactor,i)=>({depthFactor,candidate:scenarioCandidates[i]}))};
+    budget:{total:budgetTotal,missing:entries.filter(([,v])=>v===null).map(([k])=>AST.budgetLabels[k])}};
 };
 AST.renderFeasibility=function(r){
   const a=AST.assessFeasibility(r),esc=AST.escape;
