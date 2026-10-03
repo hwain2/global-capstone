@@ -72,7 +72,9 @@ AST.assessFeasibility = function(r){
     stiffnessStatus==='FAIL'?'제한 기동하중에서 날개끝 처짐 기준 초과 → 스파 강성 또는 날개 형상 수정 필요':
     weightStatus==='FAIL'?'중량 경험식 또는 중량 예산이 목표 초과 → 형상과 중량 배분 수정 필요':
     '깊이·제작 가정에 따라 스파 결과가 달라짐 → 구조팀 가정 확인 필요';
-  const note='개념설계 경험식·간이 보 모델 판정입니다. E=70 GPa와 처짐 한계 25 mm는 구조팀 기본 가정입니다. 전체 MTOW·좌굴·적층·접합부·FEA는 별도 검증이 필요합니다.';
+  const modulusText=s.material.elasticModulusGPa===null?'TBD':fmt(s.material.elasticModulusGPa,1)+' GPa';
+  const limitText=s.feasibility.tipDeflectionLimitMm===null?'TBD':fmt(s.feasibility.tipDeflectionLimitMm,0)+' mm';
+  const note=`개념설계 경험식·간이 보 모델 판정입니다. E ${modulusText} [${s.sources['material.elasticModulusGPa']||'ASSUMED'}], 허용 처짐 ${limitText} [${s.sources['feasibility.tipDeflectionLimitMm']||'ASSUMED'}]. 전체 MTOW·좌굴·적층·접합부·FEA는 별도 검증이 필요합니다.`;
   return {cards,verdict,conclusion,note,lead:conclusion,actions:cards.filter(c=>c.status!=='PASS').map(c=>c.action),
     budget:{total:budgetTotal,missing:entries.filter(([,v])=>v===null).map(([k])=>AST.budgetLabels[k])},
     scenarios:factors.map((depthFactor,i)=>({depthFactor,candidate:scenarioCandidates[i]}))};
