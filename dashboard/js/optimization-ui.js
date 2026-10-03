@@ -26,7 +26,7 @@ AST.sparSectionSVG=function(r,pick){
     <defs><marker id="spar-arrow" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5" orient="auto-start-reverse"><path d="M0 5 L2.5 0 L5 5" fill="${color}"/></marker></defs>
     <text x="310" y="42" fill="#a9dcea" font-size="10">Available</text>
     <text x="310" y="78" fill="${color}" font-size="10">${o.recommended?'Selected':'Required'}</text>
-  </svg><div class="spar-section-facts"><strong style="color:${color}">${status}</strong><span>Wing max thickness ${fmt(o.rootMaxThicknessMm,1)} mm</span><span>Available depth ${fmt(o.availableRootMm,1)} mm</span><span>${o.recommended?'Selected':'Required'} spar ${pick?fmt(pick.depthMm,1)+' mm':'TBD'}</span></div><small>Conceptual section based on t/c — actual airfoil geometry not applied</small></div>`;
+  </svg><div class="spar-section-facts"><strong style="color:${color}">${status}</strong><span>Wing max thickness ${fmt(o.rootMaxThicknessMm,1)} mm</span><span>Available depth ${fmt(o.availableRootMm,1)} mm</span><span>${o.recommended?'Selected spar':'Required outer depth'} ${pick?fmt(pick.depthMm+(o.recommended?0:(pick.rootCapThicknessMm??0)),1)+' mm':'TBD'}</span></div><small>Conceptual section based on t/c — actual airfoil geometry not applied</small></div>`;
 };
 AST.renderOptimization=function(r){
   const o=r.optimization,fmt=AST.fmt,esc=AST.escape;

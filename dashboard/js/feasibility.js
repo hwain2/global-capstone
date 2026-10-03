@@ -39,7 +39,8 @@ AST.assessFeasibility = function(r){
       margin:'—',cause:loadStatus==='PASS'?'지배 극한하중을 자동 sizing에 반영했습니다.':'지배 날개 하중을 산정할 수 없습니다.',
       action:loadStatus==='PASS'?'하중 조건의 입력 근거를 확인하세요.':'기동·돌풍 하중 입력을 확인하세요.'},
     {title:'스파 간이 Sizing',status:sparStatus,
-      value:`Available ${fmt(o.availableRootMm,1)} mm / ${sized?(o.recommended?'Selected ':'Required ')+fmt(sized.depthMm,1)+' mm':'해 없음'}`,
+      value:sized?`${o.recommended?'Selected':'Required outer'} ${fmt(sized.depthMm+(o.recommended?0:(sized.rootCapThicknessMm??0)),1)} mm / Available ${fmt(o.availableRootMm,1)} mm`:
+        `Available ${fmt(o.availableRootMm,1)} mm / 해 없음`,
       criterion:'선정 캡·웹의 강도, 강성, 내부 공간 및 제작 최소두께 확인',
       margin:sized?`Spar ${fmt(sized.massKg,3)} kg`:sparStatus==='FAIL'?'가정 범위에서 장착 가능한 단면 없음':'가정 범위에 따라 판정 변경',
       cause:sparStatus==='PASS'?'선정한 강도·강성 충족 단면이 개념 내부 공간에 들어갑니다.':
@@ -50,7 +51,7 @@ AST.assessFeasibility = function(r){
       value:`Tip deflection ${sized?.predictedDeflectionMm===null||!sized?'TBD':fmt(sized.predictedDeflectionMm,1)+' mm'} / Allowable ${s.feasibility.tipDeflectionLimitMm===null?'TBD':fmt(s.feasibility.tipDeflectionLimitMm,0)+' mm'}`,
       criterion:'반날개 균일 제한 기동하중 · 캡/웹 EI · 날개끝 처짐',
       margin:sized&&stiffnessReady?`처짐 여유 ${fmt(s.feasibility.tipDeflectionLimitMm-sized.predictedDeflectionMm,1)} mm`:'—',
-      cause:stiffnessStatus==='PASS'?'현재 날개 내부에서 허용 처짐을 만족하는 간이 스파 후보가 있습니다.':
+      cause:stiffnessStatus==='PASS'?'산정된 간이 스파 단면이 허용 처짐을 만족합니다. 장착 가능 여부는 별도로 판정합니다.':
         stiffnessStatus==='FAIL'?'현재 날개 내부의 탐색 후보가 제한하중 처짐 기준을 만족하지 못합니다.':'탄성계수·허용 처짐 또는 구조 후보 확인이 필요합니다.',
       action:stiffnessStatus==='FAIL'?'캡 강성, 익형 두께, 익근 시위 또는 스파 구조를 재검토하세요.':'E와 처짐 기준을 확인하세요.'}
   ];
