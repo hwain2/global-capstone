@@ -44,7 +44,7 @@ AST.budgetFields=Object.entries(AST.budgetLabels).map(([key,label])=>['weightBud
 AST.fieldLabel = function(path){if(path==='design.customLoad')return '사용자 지정 총양력';for(const [p,label] of AST.feasibilityFields.concat(AST.budgetFields))if(p===path)return label;for(const g of AST.fields)for(const [p,label] of g.items)if(p===path)return label;return path;};
 AST.isDerived = path => path==='wing.span'?!AST.state.wing.autoAR:path==='wing.ar'?AST.state.wing.autoAR:path==='wing.taper'?!AST.state.wing.autoChords:['wing.rootChord','wing.tipChord'].includes(path)?AST.state.wing.autoChords:['wing.mac','wing.equivChord','wing.quarterSweep','flight.q','fuselage.ld'].includes(path);
 AST.sourceFor = path => AST.isDerived(path)?'CALC':AST.get(AST.state,path)===null?'TBD':AST.state.sources[path]||(path==='feasibility.stallSpeedLimit'?'REQ':path.startsWith('sparDesign.')||path.startsWith('weightBudget.')||path==='design.customLoad'?'STRUCT':'ASSUMED');
-AST.sourceOptions = path => `<select class="source-select" data-source-path="${path}" aria-label="${AST.escape(AST.fieldLabel(path))} 입력 출처" ${AST.get(AST.state,path)===null?'disabled':''}>${['INHA','REQ','STRUCT','ASSUMED','TBD'].map(v=>`<option value="${v}" ${AST.sourceFor(path)===v?'selected':''}>${v}</option>`).join('')}</select>`;
+AST.sourceOptions = path => `<select class="source-select" data-source-path="${path}" aria-label="${AST.escape(AST.fieldLabel(path))} 입력 출처" ${AST.get(AST.state,path)===null?'disabled':''}>${AST.baselineSourceTypes.map(v=>`<option value="${v}" ${AST.sourceFor(path)===v?'selected':''}>${v}</option>`).join('')}</select>`;
 AST.allSourcePaths=()=>AST.fields.flatMap(g=>g.items).filter(([, ,unit])=>unit!=='bool').map(x=>x[0]).concat(AST.state.design.source==='custom'?['design.customLoad']:[],AST.feasibilityFields.map(x=>x[0]),AST.budgetFields.map(x=>x[0]));
 AST.resultDefs = [
   {section:'기체',label:'최대이륙질량',unit:'kg',read:r=>r.state.aircraft.mass,equation:'사용자 입력값: 최대이륙질량 [kg].',status:'입력값'},
@@ -103,7 +103,7 @@ AST.state=AST.clone(AST.defaults);
 AST.lastResult=null;
 AST.fieldHTML = function([path,label,unit],advanced) {
   const val=AST.get(AST.state,path), boolean=unit==='bool';
-  const locked=AST.state.presetLocked && AST.inhaTwoProp.lockedPaths.includes(path);
+  const locked=AST.state.presetLocked && AST.baselineLockedPaths.includes(path);
   const tip=advanced || path==='fuselage.lt' ? ' title="계수 정의 확인 필요"' : '';
   if(path==='wing.autoAR')return `<label class="field"><span>${AST.escape(label)}</span><select data-path="wing.autoAR" ${locked?'disabled':''}><option value="span" ${val?'selected':''}>날개폭 입력 · AR 자동 계산</option><option value="ar" ${val?'':'selected'}>AR 입력 · 날개폭 자동 계산</option></select><span class="source-badge">STRUCT</span></label>`;
   if(path==='wing.autoChords')return `<label class="field"><span>${AST.escape(label)}</span><select data-path="wing.autoChords"><option value="auto" ${val?'selected':''}>S·b·테이퍼비로 시위 계산</option><option value="chords" ${val?'':'selected'}>익근·익단 시위 직접 입력</option></select><span class="source-badge">STRUCT</span></label>`;
@@ -127,34 +127,11 @@ AST.buildInputs = function() {
   budget.innerHTML=AST.budgetFields.map(x=>AST.fieldHTML(x,false)).join('');
   budget.oninput=AST.onInput;budget.onchange=AST.onInput;
 };
-AST.applyInhaPreset = function() {
-  const next=AST.clone(AST.defaults);
-  next.aircraft.mass=24.9;
-  next.aircraft.g=9.81;
-  next.wing.area=0.74;
-  next.wing.autoAR=false;
-  next.wing.ar=12;
-  next.wing.autoChords=true;
-  next.flight.speed=30.71;
-  next.flight.rho=1;
-  next.flight.cruiseCL=0.70;
-  next.flight.ld=10;
-  next.feasibility.designTarget=22.4;
-  next.feasibility.mtowLimit=24.9;
-  for(const path of ['aircraft.mass','aircraft.g','wing.area','wing.ar','flight.speed','flight.rho','flight.cruiseCL','flight.ld','feasibility.mtowLimit','feasibility.designTarget'])next.sources[path]='INHA';
-  next.sources['feasibility.stallSpeedLimit']='REQ';
-  next.sensitivity.variable='wing.ar';
-  next.presetLocked=true;
-  AST.state=AST.synchronize(next);
-  AST.buildInputs();
-  AST.render();
-  document.getElementById('presetStatus').textContent='인하대 기준값 적용 · 잠금 중';
-};
 AST.onInput = function(e) {
   const el=e.target;
   if(el.dataset.sourcePath){AST.state.sources[el.dataset.sourcePath]=el.value;AST.render();return;}
   const path=el.dataset.path;if(!path)return;
-  if(AST.state.presetLocked && AST.inhaTwoProp.lockedPaths.includes(path))return;
+  if(AST.state.presetLocked && AST.baselineLockedPaths.includes(path))return;
   if(path==='wing.autoAR') {
     const current=AST.resolve(AST.state).wing;
     AST.state.wing.span=current.span;
@@ -241,7 +218,7 @@ AST.render = function() {
   for(const path of ['wing.span','wing.ar','wing.rootChord','wing.tipChord','wing.taper','wing.mac','wing.equivChord','wing.quarterSweep','flight.q','fuselage.ld']) {
     const el=document.querySelector(`[data-path="${path}"]`);
     if(!el)continue;
-    el.readOnly=(AST.state.presetLocked && AST.inhaTwoProp.lockedPaths.includes(path)) || AST.isDerived(path);
+    el.readOnly=(AST.state.presetLocked && AST.baselineLockedPaths.includes(path)) || AST.isDerived(path);
     if(el.readOnly && Number.isFinite(AST.get(resolved,path)))el.value=AST.get(resolved,path).toFixed(4);
   }
   const sourceEl=document.querySelector('[data-path="design.source"]');if(sourceEl)sourceEl.value=AST.state.design.source;
@@ -278,16 +255,10 @@ AST.sanitizeImported = function(input){
     }
   }
   if(input.sources && typeof input.sources==='object')for(const [path,source] of Object.entries(input.sources)){
-    if(['INHA','REQ','STRUCT','ASSUMED','TBD'].includes(source) && (AST.fields.some(g=>g.items.some(x=>x[0]===path))||AST.feasibilityFields.some(x=>x[0]===path)||AST.budgetFields.some(x=>x[0]===path)||path==='design.customLoad'))next.sources[path]=source;
+    if(AST.baselineSourceTypes.includes(source) && (AST.fields.some(g=>g.items.some(x=>x[0]===path))||AST.feasibilityFields.some(x=>x[0]===path)||AST.budgetFields.some(x=>x[0]===path)||path==='design.customLoad'))next.sources[path]=source;
   }
   if(!['ultimate','gust','landing','custom'].includes(next.design.source))next.design.source='ultimate';
-  next.presetLocked=input.presetLocked===true;
-  if(next.presetLocked){
-    if(next.flight.cruiseCL===null)next.flight.cruiseCL=0.70;
-    if(next.flight.ld===null)next.flight.ld=10;
-    for(const path of ['aircraft.mass','aircraft.g','wing.area','wing.ar','flight.speed','flight.rho','flight.cruiseCL','flight.ld','feasibility.mtowLimit','feasibility.designTarget'])next.sources[path]='INHA';
-    next.sources['feasibility.stallSpeedLimit']='REQ';
-  }
+  next.presetLocked=false;
   if(!AST.sensitivityDefs[next.sensitivity.equation])next.sensitivity.equation='raymerWing';
   if(input.wing && !('autoChords' in input.wing))next.wing.autoChords=false;
   const resolved=AST.resolve(next);
@@ -302,9 +273,14 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('tradeStudyDetails').addEventListener('toggle',e=>{if(e.target.open&&AST.lastResult)AST.renderOptimization(AST.lastResult);});
   document.getElementById('displayToggles').addEventListener('change',e=>{const key=e.target.dataset.display;if(key){AST.state.display[key]=e.target.checked;AST.render();}});
   document.querySelectorAll('[data-camera]').forEach(b=>b.addEventListener('click',()=>AST.setCamera(b.dataset.camera)));
-  document.getElementById('applyInhaPreset').addEventListener('click',AST.applyInhaPreset);
-  document.getElementById('unlockPreset').addEventListener('click',()=>{AST.state.presetLocked=false;AST.buildInputs();AST.render();document.getElementById('presetStatus').textContent='기준값 잠금 해제됨';});
-  document.getElementById('resetInputs').addEventListener('click',()=>{AST.state=AST.synchronize(AST.clone(AST.defaults));AST.buildInputs();AST.render();document.getElementById('presetStatus').textContent='';});
+  document.getElementById('baselineSelect').addEventListener('change',e=>{
+    const baseline=AST.baselines.find(b=>b.id===e.target.value);
+    if(baseline)AST.setActiveBaseline(baseline);
+    else {AST.activeBaseline=null;AST.baselineLockedPaths=[];AST.state=AST.synchronize(AST.clone(AST.defaults));AST.buildInputs();AST.render();AST.renderBaselineBar();}
+    document.getElementById('presetStatus').textContent=baseline?'Baseline 적용 · 원본 입력 잠금 중':'';
+  });
+  document.getElementById('unlockPreset').addEventListener('click',()=>{AST.state.presetLocked=false;AST.buildInputs();AST.render();document.getElementById('presetStatus').textContent='작업용 입력 잠금 해제 · 원본 Baseline은 유지됨';});
+  document.getElementById('resetInputs').addEventListener('click',()=>{AST.activeBaseline=null;AST.baselineLockedPaths=[];AST.state=AST.synchronize(AST.clone(AST.defaults));AST.buildInputs();AST.render();AST.renderBaselineBar();document.getElementById('presetStatus').textContent='';});
   document.getElementById('sensitivityEquation').addEventListener('change',e=>{AST.state.sensitivity.equation=e.target.value;AST.state.sensitivity.variable='';AST.renderSensitivityUI();});
   document.getElementById('sensitivityVariable').addEventListener('change',e=>{AST.state.sensitivity.variable=e.target.value;AST.renderSensitivityUI();});
   document.getElementById('sensitivityRange').addEventListener('change',e=>{AST.customRangeMode=e.target.value==='custom';if(!AST.customRangeMode)AST.state.sensitivity.range=Number(e.target.value);AST.renderSensitivityUI();});
@@ -316,10 +292,11 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('loadJSON').addEventListener('change',async e=>{
     const file=e.target.files[0];if(!file)return;
     const status=document.getElementById('importStatus');
-    try{AST.state=AST.sanitizeImported(JSON.parse(await file.text()));AST.buildInputs();AST.render();document.getElementById('presetStatus').textContent=AST.state.presetLocked?'불러온 기준값 · 잠금 중':'';status.textContent=file.name+'에서 입력값을 불러왔습니다.';}
+    try{AST.activeBaseline=null;AST.baselineLockedPaths=[];AST.state=AST.sanitizeImported(JSON.parse(await file.text()));AST.buildInputs();AST.render();AST.renderBaselineBar();document.getElementById('presetStatus').textContent='';status.textContent=file.name+'에서 입력값을 불러왔습니다.';}
     catch(err){status.textContent='JSON을 불러오지 못했습니다: '+err.message;}
     e.target.value='';
   });
   AST.render();
+  AST.fetchBaselines().catch(error=>{document.getElementById('presetStatus').textContent='Baseline 로드 실패: '+error.message;});
   if(!window.Plotly){const script=document.querySelector('script[src*="plotly"]');script.addEventListener('load',()=>AST.render(),{once:true});}
 });

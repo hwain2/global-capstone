@@ -48,10 +48,6 @@ AST.geometryChecks = function(s){
   add('1/4 시위 후퇴각 (앞전 후퇴각·시위에서 계산)',w.quarterSweep,Math.atan(Math.tan(w.sweep*Math.PI/180)-(w.rootChord-w.tipChord)/(2*w.span))*180/Math.PI,'deg');
   add('익근 최대두께 = cr(t/c)',w.rootChord*w.tc*1000,w.rootChord*w.tc*1000,'mm');
   add('동체 l/d ≈ L/[(폭+높이)/2]',f.ld,f.length/((f.width+f.height)/2),'—');
-  if(s.presetLocked){
-    add('INHA 제공 날개폭 ≈ 2.98 m',w.span,AST.inhaTwoProp.referenceSpan,'m',relative(w.span,AST.inhaTwoProp.referenceSpan)>0.01);
-    add('INHA 제공 등가시위 ≈ 0.248 m',w.equivChord,AST.inhaTwoProp.referenceEquivalentChord,'m',relative(w.equivChord,AST.inhaTwoProp.referenceEquivalentChord)>0.01);
-  }
   if(s.sparDesign.localThicknessMm!==null && s.sparDesign.localThicknessMm>w.rootChord*w.tc*1000)
     checks.push({name:'스파 위치 두께가 익근 최대두께 상한을 초과합니다. 구조 가정을 재검토하세요.',warning:true});
   return checks;

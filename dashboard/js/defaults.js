@@ -15,11 +15,7 @@ AST.defaults = {
   display: { aircraft: true, lift: true, weight: true, shear: true, moment: true, gust: false, impact: false, spar: true, cg: true, dimensions: false },
   sensitivity: { equation: 'raymerWing', variable: 'wing.span', range: 20 }
 };
-AST.inhaTwoProp = {
-  referenceSpan: 2.98,
-  referenceEquivalentChord: 0.248,
-  lockedPaths: ['aircraft.mass','aircraft.g','wing.area','wing.autoAR','wing.span','wing.ar','wing.equivChord','flight.speed','flight.rho','flight.q','flight.cruiseCL','flight.ld','feasibility.mtowLimit','feasibility.designTarget']
-};
+AST.baselineLockedPaths = [];
 AST.clone = value => JSON.parse(JSON.stringify(value));
 AST.trapezoidMAC = (root,tip) => root > 0 && tip > 0 ? (2/3)*root*(1+tip/root+(tip/root)**2)/(1+tip/root) : NaN;
 AST.resolve = function (state) {
