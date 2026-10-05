@@ -5,11 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#101d2d">
   <title>항공기 구조 설계 도구</title>
-  <link rel="stylesheet" href="css/style.css?v=20261003-6">
+  <link rel="stylesheet" href="css/style.css?v=20261005-3">
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js" defer></script>
-  <script src="js/defaults.js?v=20261003-6" defer></script>
+  <script src="js/defaults.js?v=20261005-3" defer></script>
+  <script src="js/baselines.js?v=20261005-3" defer></script>
   <script src="js/units.js" defer></script>
-  <script src="js/validation.js?v=20261003-6" defer></script>
+  <script src="js/validation.js?v=20261005-3" defer></script>
   <script src="js/calculations-weight.js" defer></script>
   <script src="js/calculations-loads.js?v=20261002-1" defer></script>
   <script src="js/calculations-spar.js?v=20261003-6" defer></script>
@@ -21,8 +22,9 @@
   <script src="js/aircraft-3d.js" defer></script>
   <script src="js/charts.js?v=20261003-6" defer></script>
   <script src="js/optimization-ui.js?v=20261005-2" defer></script>
-  <script src="js/export.js?v=20261003-6" defer></script>
-  <script src="js/app.js?v=20261005-1" defer></script>
+  <script src="js/export.js?v=20261005-3" defer></script>
+  <script src="js/app.js?v=20261005-3" defer></script>
+  <script src="js/baseline-editor.js?v=20261005-3" defer></script>
 </head>
 <body>
   <header class="site-header" id="overview">
@@ -37,7 +39,7 @@
     <div id="geometryWarnings" class="validation geometry-warning" role="alert" hidden></div>
     <section class="overview-strip" aria-label="현재 설계안 개요"><div class="overline">현재 설계안</div><div id="overviewCards" class="overview-cards"></div></section>
     <div class="dashboard-grid">
-      <aside id="inputs" class="panel inputs-panel"><div class="panel-head"><div><span class="eyebrow">01 / 설계 변수</span><h2>입력값</h2></div><button id="resetInputs" class="quiet-button" type="button">초기화</button></div><div class="preset-box"><button id="applyInhaPreset" class="primary-button" type="button">인하대 2-prop 기준값 적용</button><button id="unlockPreset" class="quiet-button" type="button" hidden>기준값 잠금 해제</button><p id="presetStatus" class="micro" role="status"></p></div><div id="inputGroups"></div><details class="input-group"><summary>판정 기준 입력</summary><div id="feasibilityInputs" class="fields"></div></details><details class="input-group"><summary>전체 중량 예산</summary><p class="micro">전체 MTOW 판정에는 모든 구성품 질량이 필요합니다.</p><div id="weightBudgetInputs" class="fields"></div></details><details class="feasibility-evidence"><summary>Geometry consistency · 형상 계산 확인</summary><ul id="geometryChecks" class="geometry-checks"></ul></details></aside>
+      <aside id="inputs" class="panel inputs-panel"><div class="panel-head"><div><span class="eyebrow">01 / 설계 변수</span><h2>입력값</h2></div><button id="resetInputs" class="quiet-button" type="button">초기화</button></div><div class="preset-box"><label for="baselineSelect">Baseline</label><select id="baselineSelect" aria-label="Baseline 선택"><option value="">새 계산</option></select><p id="baselineMeta" class="micro"></p><button id="unlockPreset" class="quiet-button" type="button" hidden>작업용 입력 잠금 해제</button><div id="baselineEditorActions" class="baseline-editor-actions" hidden><button id="baselineEdit" type="button">수정</button><button id="baselineDuplicate" type="button">복제</button><button id="baselineNew" type="button">+ 새 Baseline</button><button id="baselineHistory" type="button">변경 이력</button><button id="baselineDeactivate" type="button">비활성화</button><button id="baselineSync" type="button">GitHub Sync</button></div><p id="presetStatus" class="micro" role="status"></p></div><div id="inputGroups"></div><details class="input-group"><summary>판정 기준 입력</summary><div id="feasibilityInputs" class="fields"></div></details><details class="input-group"><summary>전체 중량 예산</summary><p class="micro">전체 MTOW 판정에는 모든 구성품 질량이 필요합니다.</p><div id="weightBudgetInputs" class="fields"></div></details><details class="feasibility-evidence"><summary>Geometry consistency · 형상 계산 확인</summary><ul id="geometryChecks" class="geometry-checks"></ul></details></aside>
       <section id="geometry" class="panel geometry-panel"><div class="panel-head"><div><span class="eyebrow">02 / 형상과 하중</span><h2>3D 항공기</h2></div><div class="camera-buttons" aria-label="카메라 방향"><button data-camera="iso">사선</button><button data-camera="top">위</button><button data-camera="front">앞</button><button data-camera="side">옆</button></div></div><div id="aircraftPlot" class="aircraft-plot" aria-label="상호작용 가능한 항공기 3D 형상"></div><output id="loadSelection" class="load-selection" aria-live="polite" hidden></output><div class="toggle-wrap"><h3>표시 항목</h3><div id="displayToggles" class="toggle-grid"></div></div></section>
       <aside class="results-column">
         <section id="weight" class="panel result-panel"><div class="panel-head"><div><span class="eyebrow">03 / 경험식</span><h2>중량</h2></div></div><div id="weightResults"></div></section>
@@ -51,5 +53,7 @@
     <section id="feasibility" class="panel feasibility-panel"><div class="panel-head"><div><span class="eyebrow">09 / Baseline Feasibility</span><h2>최종 경험식 판정</h2></div></div><div id="feasibilityVerdict" class="feasibility-summary" role="status"></div><div id="feasibilityCards" class="feasibility-brief"></div><p id="feasibilityConclusion" class="feasibility-conclusion"></p><p id="feasibilityNote" class="feasibility-note"></p></section>
     <section id="summary" class="panel summary-panel"><div class="panel-head"><div><span class="eyebrow">10 / 결과 저장</span><h2>내보내기</h2></div></div><div class="summary-actions"><button id="downloadCSV" class="primary-button" type="button">결과 CSV</button><button id="saveJSON" type="button">입력값 저장</button><label class="file-button">입력값 불러오기<input id="loadJSON" type="file" accept="application/json,.json"></label><button id="downloadText" type="button">요약 텍스트</button><button id="downloadPNG" type="button">3D PNG</button></div><p id="importStatus" class="micro" role="status"></p><details class="analysis-details"><summary>전체 계산값과 계산식 보기</summary><div id="summaryTable" class="table-scroll"></div></details></section>
   </main>
+  <dialog id="baselineDialog" class="baseline-dialog" aria-labelledby="baselineDialogTitle"><form id="baselineForm"><div class="baseline-dialog-head"><h2 id="baselineDialogTitle">Baseline 편집</h2><button id="baselineClose" type="button" aria-label="닫기">×</button></div><div id="baselineFormFields"></div><div id="baselineConflict" class="validation" hidden></div><div id="baselineWarnings" class="geometry-warning" role="status"></div><div class="baseline-dialog-actions"><button id="baselineSave" class="primary-button" type="submit">저장</button><button id="baselineCancel" type="button">취소</button></div></form></dialog>
+  <dialog id="baselineHistoryDialog" class="baseline-dialog" aria-label="Baseline 변경 이력"><div class="baseline-dialog-head"><h2>변경 이력</h2><button id="baselineHistoryClose" type="button" aria-label="닫기">×</button></div><div id="baselineHistoryRows"></div></dialog>
 </body>
 </html>
