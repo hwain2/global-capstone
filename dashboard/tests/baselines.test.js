@@ -1,0 +1,53 @@
+// Run with Node.js: node tests/baselines.test.js
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const vm=require('node:vm');
+const root=path.join(__dirname,'..');
+const context={window:{}};context.window=context;vm.createContext(context);
+for(const name of ['defaults','baselines','units','validation','calculations-weight',
+  'calculations-loads','calculations-spar','calculations-optimization','feasibility']){
+  vm.runInContext(fs.readFileSync(path.join(root,'js',name+'.js'),'utf8'),context,{filename:name+'.js'});
+}
+const A=context.AST;
+A.fmt=(value,places=2)=>Number.isFinite(value)?value.toFixed(places):'—';
+const manifest=JSON.parse(fs.readFileSync(path.join(root,'data/baselines/manifest.json')));
+assert.ok(manifest.baselines.includes('inha_2prop.json'));
+const inha=JSON.parse(fs.readFileSync(path.join(root,'data/baselines/inha_2prop.json')));
+assert.equal(inha.battery.series_count.value,12);
+assert.equal(inha.battery.capacity_Ah.value,3.3);
+assert.equal(inha.battery.battery_mass_kg.value,null);
+assert.equal(inha.battery.battery_mass_kg.source_type,'TBD');
+const initial=A.baselineToState(inha);
+assert.equal(initial.state.aircraft.mass,24.9);
+assert.equal(initial.state.weightBudget.battery,null);
+assert.equal(initial.state.sources['wing.area'],'INHA');
+assert.ok(Math.abs(initial.state.wing.span-2.98)<.01);
+const result=A.calculate(initial.state);
+assert.deepEqual(Array.from(result.errors),[]);
+assert.equal(A.assessFeasibility(result).verdict,'경험식 기준 불가능');
+const manual=A.clone(A.defaults);
+manual.aircraft.mass=24.9;manual.aircraft.g=9.81;manual.wing.area=.74;
+manual.wing.autoAR=false;manual.wing.ar=12;manual.flight.speed=30.71;manual.flight.rho=1;
+const reference=A.calculate(A.synchronize(manual));
+assert.ok(Math.abs(result.weight.raymerWing-reference.weight.raymerWing)<1e-10);
+assert.ok(Math.abs(result.optimization.provisional.massKg-reference.optimization.provisional.massKg)<1e-10);
+const duplicate=A.duplicateBaselineData(inha);
+duplicate.id='inha_4prop';duplicate.concept_name='4-Prop';duplicate.propulsion.prop_count.value=4;
+assert.equal(duplicate.revision,0);
+assert.equal(duplicate.inherited_from,'inha_2prop r1');
+assert.equal(duplicate.wing.area.source_type,'ASSUMED');
+assert.ok(duplicate.wing.area.source_note.includes('Inherited from'));
+assert.equal(A.calculate(A.baselineToState(duplicate).state).errors.length,0);
+const other=A.clone(duplicate);
+other.wing.area.value=.9;other.wing.ar.value=10;other.battery.capacity_Ah.value=4;
+const fresh=A.baselineToState(other).state;
+assert.equal(fresh.wing.area,.9);
+assert.equal(fresh.battery?.capacity_Ah,undefined);
+assert.ok(Math.abs(fresh.wing.span-3)<1e-8);
+assert.equal(fresh.flight.speed,30.71);
+assert.equal(fresh.weightBudget.battery,null);
+const empty=A.baselineToState({...other,flight:{},battery:{...other.battery,battery_mass_kg:{value:1.2,unit:'kg',source_type:'STRUCT',source_note:''}}}).state;
+assert.equal(empty.flight.speed,A.defaults.flight.speed,'previous concept flight speed must not remain');
+assert.equal(empty.weightBudget.battery,1.2,'battery mass alone enters the weight budget');
+console.log('Baseline JSON and common calculation engine tests passed');
