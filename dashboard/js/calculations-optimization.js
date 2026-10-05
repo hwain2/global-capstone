@@ -2,8 +2,21 @@ window.AST = window.AST || {};
 AST.uniformBeamTipDeflectionMm = (halfLoadN,lengthM,elasticModulusGPa,inertiaMm4) =>
   halfLoadN*lengthM**3/(8*elasticModulusGPa*1e9*inertiaMm4*1e-12)*1000;
 // Root-section sizing uses the same M/(sigma*h) and V/(tau*h) equations as AST.spar.
-// The airfoil proxy can be replaced by measured coordinates without changing candidate sizing.
-AST.optimizeSpar = function(s, loads) {
+// Minimum thickness across the full cap footprint is a conservative NACA4 proxy.
+// Replace this helper with sampled airfoil coordinates when they become available.
+AST.capFootprintDepthMm = function(s, chordMm, capWidthMm, centerThicknessMm) {
+  const center=s.sparDesign.sparXc,halfWidth=capWidthMm/(2*chordMm);
+  if(!Number.isFinite(halfWidth)||center-halfWidth<=0||center+halfWidth>=1)return 0;
+  const centerFactor=AST.naca4ThicknessFactor(center);
+  let minimum=Infinity;
+  for(let i=0;i<=12;i++){
+    const xc=center-halfWidth+2*halfWidth*i/12;
+    minimum=Math.min(minimum,AST.naca4ThicknessFactor(xc));
+  }
+  return centerThicknessMm*s.sparDesign.depthFactor*minimum/centerFactor;
+};
+// Size one spanwise cap-width family before selecting the lightest width/depth pair.
+AST.sizeSparAtWidth = function(s, loads, widthRatio) {
   const w=s.wing,d=s.sparDesign,mat=s.material,half=w.span/2;
   const designLoad=Math.max(loads.ultimate,loads.gustUltimate,
     s.design.source==='custom' ? s.design.customLoad : 0);
@@ -14,7 +27,7 @@ AST.optimizeSpar = function(s, loads) {
     return {chordMm:chord*1000,thicknessMm:AST.sparThicknessAt(s,chord)};
   };
   const availableRootMm=thicknessAt(0).thicknessMm*d.depthFactor;
-  const capWidthAt=chordMm=>d.capWidthMm??chordMm*d.capWidthRatio;
+  const capWidthAt=chordMm=>d.capWidthMm??chordMm*widthRatio;
   const buildInputsReady=(d.capWidthMm!==null||d.capWidthRatio!==null)&&d.manufacturingMinCapMm!==null&&d.manufacturingMinWebMm!==null;
   const verifiedThickness=d.localThicknessMm!==null&&d.localThicknessMm<=rootMaxThicknessMm;
   const modulusReady=mat.elasticModulusGPa!==null;
@@ -33,13 +46,14 @@ AST.optimizeSpar = function(s, loads) {
       const {chordMm,thicknessMm}=thicknessAt(y);
       const capWidthMm=capWidthAt(chordMm);
       const available=thicknessMm*d.depthFactor;
+      const footprintAvailable=AST.capFootprintDepthMm(s,chordMm,capWidthMm,thicknessMm);
       const h=depthMm*thicknessMm/thicknessAt(0).thicknessMm;
       const capRequired=Math.abs(M)*1000/(mat.capStress*h);
       const webRequired=Math.abs(V)/(mat.webStress*h);
       const selectedCapThickness=buildInputsReady?Math.max(capRequired/capWidthMm,d.manufacturingMinCapMm):null;
       const selectedCapArea=buildInputsReady?selectedCapThickness*capWidthMm:capRequired;
       const selectedWeb=buildInputsReady?Math.max(webRequired,d.manufacturingMinWebMm):webRequired;
-      segments.push({y,dy,M,V,chordMm,available,h,capWidthMm,capRequired,selectedCapThickness,selectedWeb});
+      segments.push({y,dy,M,V,chordMm,available,footprintAvailable,h,capWidthMm,capRequired,selectedCapThickness,selectedWeb});
       theoreticalUpper+=capRequired*1e-6*dy*mat.density;
       theoreticalWeb+=webRequired*h*1e-6*dy*mat.density;
       upper+=selectedCapArea*1e-6*dy*mat.density;
@@ -47,8 +61,8 @@ AST.optimizeSpar = function(s, loads) {
       web+=selectedWeb*h*1e-6*dy*mat.density;
       // h is the cap-centroid spacing used by the existing bending equation.
       // Two cap laminates add one cap thickness to the outside-to-outside depth.
-      if(h>available+1e-8||buildInputsReady&&(capWidthMm>chordMm||
-          h+selectedCapThickness>available+1e-8||selectedCapThickness>=h||selectedWeb>capWidthMm))packaging=false;
+      if(h>available+1e-8||buildInputsReady&&(footprintAvailable<=0||
+          h+selectedCapThickness>footprintAvailable+1e-8||selectedCapThickness>=h||selectedWeb>capWidthMm))packaging=false;
       const capActual=Math.abs(M)*1000/(selectedCapArea*h);
       const webActual=Math.abs(V)/(selectedWeb*h);
       maxCapStress=Math.max(maxCapStress,capActual);
@@ -75,7 +89,7 @@ AST.optimizeSpar = function(s, loads) {
           up+=capArea*1e-6*p.dy*mat.density;
           lo+=capArea*1e-6*p.dy*mat.density;
           wb+=p.selectedWeb*p.h*1e-6*p.dy*mat.density;
-          if(p.h+capThickness>p.available+1e-8||capThickness>=p.h)fit=false;
+          if(p.h+capThickness>p.footprintAvailable+1e-8||capThickness>=p.h)fit=false;
           const stress=Math.abs(p.M)*1000/(capArea*p.h);
           minCap=Math.min(minCap,stress>0?mat.capStress/stress-1:Infinity);
           maxCap=Math.max(maxCap,stress);
@@ -120,9 +134,14 @@ AST.optimizeSpar = function(s, loads) {
     if(Math.abs(minCapMS)<1e-9)minCapMS=0;
     if(Math.abs(minWebMS)<1e-9)minWebMS=0;
     const stiffnessPass=predictedDeflectionMm===null||deflectionLimit===null?null:predictedDeflectionMm<=deflectionLimit+1e-6;
-    const eligible=packaging&&strengthPass&&buildInputsReady&&stiffnessPass!==false;
-    const packagingRatio=rootCapThickness===null?null:(depthMm+rootCapThickness)/availableRootMm;
+    const eligible=packaging&&strengthPass&&buildInputsReady&&stiffnessPass===true;
+    const packagingRatio=rootCapThickness===null?null:segments.reduce((worst,p)=>Math.max(worst,
+      p.footprintAvailable>0?(p.h+p.selectedCapThickness*capScale)/p.footprintAvailable:Infinity),0);
+    packaging=packaging&&packagingRatio!==null&&packagingRatio<=1+1e-8;
+    const rootCapWidthMm=capWidthAt(w.rootChord*1000);
+    const rootFootprintAvailableMm=AST.capFootprintDepthMm(s,w.rootChord*1000,rootCapWidthMm,thicknessAt(0).thicknessMm);
     candidates.push({index:i,fraction,depthMm,availableRootMm,rootCapAreaMm2:rootCapArea,
+      rootCapWidthMm,rootFootprintAvailableMm,capWidthRatio:rootCapWidthMm/(w.rootChord*1000),
       rootStiffnessCapAreaMm2:rootStiffnessCapArea,rootSelectedCapAreaMm2:rootSelectedCapArea,
       rootAnalyticStiffnessCapAreaMm2:rootAnalyticStiffnessCapArea,requiredEINm2,
       rootWebThicknessMm:rootWebThickness,rootCapThicknessMm:rootCapThickness,
@@ -137,7 +156,7 @@ AST.optimizeSpar = function(s, loads) {
   }
   const feasible=candidates.filter(c=>c.eligible);
   const recommended=feasible.reduce((best,c)=>!best||c.massKg<best.massKg?c:best,null);
-  const provisional=candidates.filter(c=>c.strengthPass&&c.stiffnessPass!==false)
+  const provisional=candidates.filter(c=>c.strengthPass&&c.stiffnessPass===true)
     .reduce((best,c)=>!best||c.massKg<best.massKg?c:best,null);
   const empiricalWingMassKg=AST.weight(s).raymerWing;
   const comparison=recommended||provisional;
@@ -148,6 +167,42 @@ AST.optimizeSpar = function(s, loads) {
   return {designLoad,deflectionLoad:s.aircraft.nLimit*loads.weight,
     availableRootMm,rootMaxThicknessMm,verifiedThickness,buildInputsReady,
     empiricalWingMassKg,sparToWingRatio,
-    rootCapWidthMm:capWidthAt(w.rootChord*1000),thicknessBasis:verifiedThickness?'INPUT':'NACA4_ASSUMED',
+    rootCapWidthMm:capWidthAt(w.rootChord*1000),thicknessBasis:verifiedThickness?'INPUT_AT_STATION_NACA_PROFILE':'NACA4_ASSUMED',
     candidates,recommended,provisional,overall,span};
+};
+AST.optimizeSpar = function(s,loads) {
+  const d=s.sparDesign,xc=d.sparXc;
+  const maximumRatio=Math.min(1,2*Math.min(xc,1-xc)*.98);
+  const minimumRatio=d.capWidthRatio;
+  const widthRatios=d.capWidthMm!==null||minimumRatio>=maximumRatio?[minimumRatio]:
+    Array.from({length:21},(_,i)=>minimumRatio+(maximumRatio-minimumRatio)*i/20);
+  const studies=widthRatios.map(ratio=>AST.sizeSparAtWidth(s,loads,ratio));
+  let selectedStudy=null,recommended=null,provisional=null;
+  for(const study of studies){
+    if(study.recommended&&(!recommended||study.recommended.massKg<recommended.massKg)){
+      recommended=study.recommended;selectedStudy=study;
+    }
+  }
+  if(!selectedStudy){
+    for(const study of studies){
+      for(const candidate of study.candidates){
+        if(!candidate.strengthPass||candidate.stiffnessPass!==true)continue;
+        if(!provisional||candidate.packagingRatio<provisional.packagingRatio-1e-9||
+          Math.abs(candidate.packagingRatio-provisional.packagingRatio)<1e-9&&candidate.massKg<provisional.massKg){
+          provisional=candidate;selectedStudy=study;
+        }
+      }
+    }
+  }
+  selectedStudy=selectedStudy||studies[0];
+  const empiricalWingMassKg=selectedStudy.empiricalWingMassKg;
+  const comparison=recommended||provisional;
+  return {...selectedStudy,recommended,provisional,
+    rootCapWidthMm:comparison?.rootCapWidthMm??selectedStudy.rootCapWidthMm,
+    rootFootprintAvailableMm:comparison?.rootFootprintAvailableMm??null,
+    widthCandidateCount:studies.length,capWidthMode:d.capWidthMm===null?'AUTO':'FIXED',
+    sparToWingRatio:comparison?comparison.massKg/empiricalWingMassKg:null,
+    overall:!selectedStudy.buildInputsReady||s.material.elasticModulusGPa===null||s.feasibility.tipDeflectionLimitMm===null?
+      'INSUFFICIENT INPUT':recommended&&recommended.massKg<empiricalWingMassKg?
+      'FEASIBLE BY EMPIRICAL MODEL':'NOT FEASIBLE BY EMPIRICAL MODEL'};
 };

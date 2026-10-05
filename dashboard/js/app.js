@@ -6,7 +6,7 @@ AST.fields = [
   {group:'비행 조건',items:[['flight.speed','순항속도 V','m/s'],['flight.rho','공기밀도 ρ','kg/m³'],['flight.q','동압 q = ½ρV²','Pa'],['flight.cruiseCL','순항 CL','—'],['flight.ld','순항 L/D','—'],['flight.gustSpeed','돌풍속도 Ude','m/s'],['flight.liftSlope','양력곡선기울기 a','1/rad'],['flight.muG','돌풍 질량비 μg','—']]},
   {group:'착륙 조건',items:[['landing.drop','낙하 높이 h','m'],['landing.stop','정지 거리 s','m']]},
   {group:'재료·구조',items:[['material.density','재료 밀도','kg/m³'],['material.capStress','캡 허용응력','MPa'],['material.webStress','웹 허용전단응력','MPa'],['material.elasticModulusGPa','스파 탄성계수 E','GPa']]},
-  {group:'스파 자동 탐색 · STRUCT',items:[['sparDesign.depthFactor','깊이 활용률 (0~1)','—'],['sparDesign.sparXc','가정 스파 위치 x/c','—'],['sparDesign.localThicknessMm','실제 스파 위치 두께 (선택)','mm'],['sparDesign.capWidthRatio','가정 캡 폭 / 시위','—'],['sparDesign.capWidthMm','실제 캡 폭 (선택)','mm'],['sparDesign.manufacturingMinCapMm','가정 최소 캡 두께','mm'],['sparDesign.manufacturingMinWebMm','가정 최소 웹 두께','mm']]},
+  {group:'스파 자동 탐색 · STRUCT',items:[['sparDesign.depthFactor','깊이 활용률 (0~1)','—'],['sparDesign.sparXc','가정 스파 위치 x/c','—'],['sparDesign.localThicknessMm','실제 스파 위치 두께 (선택)','mm'],['sparDesign.capWidthRatio','최소 캡 폭 / 시위','—'],['sparDesign.capWidthMm','실제 캡 폭 (선택 · 폭 고정)','mm'],['sparDesign.manufacturingMinCapMm','가정 최소 캡 두께','mm'],['sparDesign.manufacturingMinWebMm','가정 최소 웹 두께','mm']]},
   {group:'기존 스파 단면 비교 · STRUCT',advanced:true,items:[['sparDesign.requestedDepthMm','기존 선정 스파 깊이','mm'],['sparDesign.selectedCapAreaMm2','기존 선정 캡 면적','mm²'],['sparDesign.selectedWebThicknessMm','기존 선정 웹 두께','mm']]},
   {group:'고급 계수',advanced:true,items:[['material.krw','Kρ,w','참고값'],['material.krf','Kρ,f','참고값'],['material.kinlet','K inlet','참고값'],['material.pmax','P max','참고값']]}
 ];
@@ -110,7 +110,7 @@ AST.fieldHTML = function([path,label,unit],advanced) {
   if(boolean)return `<label class="check-field"><input type="checkbox" data-path="${path}" ${val?'checked':''} ${locked?'disabled':''}><span>${AST.escape(label)}</span></label>`;
   const step=AST.inputSteps[path] ?? 'any';
   const optional=AST.get(AST.defaults,path)===null, derived=AST.isDerived(path);
-  const placeholder=['sparDesign.localThicknessMm','sparDesign.capWidthMm'].includes(path)?'미입력 시 구조팀 가정 적용':optional?'미입력 · TBD':'';
+  const placeholder=path==='sparDesign.capWidthMm'?'미입력 시 캡 폭 자동 탐색':path==='sparDesign.localThicknessMm'?'미입력 시 개념 익형 적용':optional?'미입력 · TBD':'';
   return `<div class="field"><label for="input-${path}">${AST.escape(label)}${advanced || path==='fuselage.lt' ? '<span class="verify-icon"'+tip+'>?</span>':''}</label><span class="input-unit"><input id="input-${path}" type="number" inputmode="decimal" data-path="${path}" step="${step}" value="${val===null?'':AST.escape(val)}" placeholder="${placeholder}" title="증감 단위: ${step} ${AST.escape(unit)}" ${locked||derived?'readonly':''}><em>${AST.escape(unit)}</em></span><div class="field-source"><span>출처</span>${derived?'<span class="source-badge">CALC</span>':AST.sourceOptions(path)}</div></div>`;
 };
 AST.buildInputs = function() {
