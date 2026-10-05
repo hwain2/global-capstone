@@ -1,0 +1,17 @@
+[Unit]
+Description=KNU aircraft baseline editor
+After=network-online.target
+
+[Service]
+Type=simple
+User=KNU_USER
+WorkingDirectory=DASHBOARD_PATH
+Environment=AST_MODE=EDITOR_MODE
+Environment=AST_GIT_BRANCH=main
+ExecStart=/usr/bin/bash DASHBOARD_PATH/scripts/start_server.sh
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,19 @@
+server {
+    listen 80;
+    server_name KNU_INTERNAL_HOST;
+
+    # Replace with the actual KNU VPN/LAN CIDR before enabling.
+    allow KNU_ALLOWED_CIDR;
+    deny all;
+    auth_basic "KNU Structure Team";
+    auth_basic_user_file /etc/nginx/.htpasswd-knu-aircraft;
+
+    location / {
+        proxy_pass http://127.0.0.1:8765;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size 1m;
+    }
+}
