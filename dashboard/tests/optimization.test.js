@@ -35,22 +35,52 @@ const calc=s=>{const r=A.calculate(s);assert.deepEqual(Array.from(r.errors),[]);
   assert.ok(o.candidates[0].rootCapAreaMm2>o.candidates.at(-1).rootCapAreaMm2);
   assert.equal(o.overall,'NOT FEASIBLE BY EMPIRICAL MODEL');
   assert.equal(o.thicknessBasis,'NACA4_ASSUMED');
+  assert.equal(o.capWidthMode,'AUTO');
+  assert.equal(o.widthCandidateCount,21);
   assert.equal(o.recommended,null);
-  assert.ok(o.provisional,'stiffness-sized diagnostic remains visible when packaging fails');
+  assert.ok(o.provisional,'closest stiffness-sized diagnostic remains visible when packaging fails');
   assert.ok(o.provisional.stiffnessPass);
   assert.equal(o.provisional.packagingPass,false);
   assert.ok(o.provisional.rootStiffnessCapAreaMm2>o.provisional.rootCapAreaMm2);
   assert.ok(o.provisional.predictedDeflectionMm<=25+1e-6);
-  assert.ok(o.provisional.depthMm+o.provisional.rootCapThicknessMm>o.availableRootMm);
-  assert.ok(o.provisional.massKg<o.empiricalWingMassKg,
-    'mass alone must not override a packaging failure');
+  assert.ok(o.provisional.depthMm+o.provisional.rootCapThicknessMm>o.provisional.rootFootprintAvailableMm);
+  assert.ok(o.provisional.rootFootprintAvailableMm<o.availableRootMm,
+    'a wide cap must use the least thickness under its footprint');
+  assert.ok(o.provisional.massKg>o.empiricalWingMassKg,
+    'the nearest packing diagnostic is also overweight');
   assert.ok(Math.abs(o.sparToWingRatio-o.provisional.massKg/o.empiricalWingMassKg)<1e-12);
   const root=o.provisional;
   const expectedEI=o.deflectionLoad/2*(r.state.wing.span/2)**3/(8*.025);
   assert.ok(Math.abs(root.requiredEINm2/expectedEI-1)<1e-12);
-  assert.ok(Math.abs(o.rootCapWidthMm-r.state.wing.rootChord*1000*r.state.sparDesign.capWidthRatio)<1e-9);
+  assert.ok(o.provisional.rootCapWidthMm>r.state.wing.rootChord*1000*r.state.sparDesign.capWidthRatio);
+  assert.ok(Math.abs(o.rootCapWidthMm-o.provisional.rootCapWidthMm)<1e-9);
   const s=inha();s.sparDesign.requestedDepthMm=100;
   assert.equal(calc(s).optimization.overall,o.overall,'old manual depth must not determine baseline');
+}
+{
+  const s=A.clone(A.defaults),r=calc(s),o=r.optimization;
+  assert.ok(o.recommended,'roomy reference wing should have a width/depth solution');
+  const maxRatio=2*Math.min(s.sparDesign.sparXc,1-s.sparDesign.sparXc)*.98;
+  const ratios=Array.from({length:21},(_,i)=>s.sparDesign.capWidthRatio+
+    (maxRatio-s.sparDesign.capWidthRatio)*i/20);
+  const all=ratios.flatMap(ratio=>A.sizeSparAtWidth(r.state,r.loads,ratio).candidates);
+  const best=Math.min(...all.filter(c=>c.eligible).map(c=>c.massKg));
+  assert.ok(Math.abs(o.recommended.massKg-best)<1e-9,
+    'recommended spar must minimize mass across both cap width and depth');
+  assert.ok(o.candidates.every(c=>!c.packagingPass||c.packagingRatio<=1+1e-8));
+  assert.ok(o.recommended.depthMm+o.recommended.rootCapThicknessMm<=
+    o.recommended.rootFootprintAvailableMm+1e-8);
+  const fixed=A.clone(s);fixed.sparDesign.capWidthMm=100;
+  const fixedResult=calc(fixed).optimization;
+  assert.equal(fixedResult.capWidthMode,'FIXED');
+  assert.equal(fixedResult.widthCandidateCount,1);
+  assert.ok(fixedResult.candidates.every(c=>c.rootCapWidthMm===100));
+  const chord=s.wing.rootChord*1000,atCenter=A.sparThicknessAt(s,s.wing.rootChord);
+  const narrow=A.capFootprintDepthMm(s,chord,.08*chord,atCenter);
+  const wide=A.capFootprintDepthMm(s,chord,.45*chord,atCenter);
+  assert.ok(wide<narrow,'wide cap must account for thinner airfoil near its ends');
+  assert.equal(A.capFootprintDepthMm(s,chord,.8*chord,atCenter),0,
+    'cap spanning outside the chord cannot pass packaging');
 }
 {
   const base=calc(built()),higher= built();higher.aircraft.nLimit*=1.2;
@@ -81,14 +111,15 @@ const calc=s=>{const r=A.calculate(s);assert.deepEqual(Array.from(r.errors),[]);
 {
   const s=built();s.feasibility.tipDeflectionLimitMm=null;
   const r=calc(s);
-  assert.ok(r.optimization.recommended);
-  assert.equal(r.optimization.recommended.stiffnessPass,null);
+  assert.equal(r.optimization.recommended,null);
+  assert.equal(r.optimization.provisional,null);
   assert.equal(r.optimization.overall,'INSUFFICIENT INPUT');
 }
 {
   const a=A.assessFeasibility(calc(inha()));
   assert.equal(a.verdict,'경험식 기준 불가능');
-  assert.deepEqual(Array.from(a.cards,c=>c.status),['PASS','PASS','FAIL','PASS']);
+  assert.deepEqual(Array.from(a.cards,c=>c.status),['FAIL','PASS','FAIL','PASS']);
+  assert.ok(a.conclusion.includes('진단 후보도 주익 경험식 중량 초과'));
   const s=built(),initial=calc(s);
   for(const key of Object.keys(s.weightBudget))s.weightBudget[key]=0;
   s.weightBudget.wingStructure=initial.weight.raymerWing+0.1;
