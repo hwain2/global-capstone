@@ -5,7 +5,7 @@ AST.geometry = function (s) {
   const R=s.wing.span/2,L=s.fuselage.length,halfWidth=s.fuselage.width/2,halfHeight=s.fuselage.height/2;
   const rootLE=-0.22*L,tipLE=rootLE+R*Math.tan(s.wing.sweep*Math.PI/180);
   const rootY=Math.min(R*0.3,Math.max(0.04,halfWidth*0.68));
-  const sparRootX=rootLE+0.3*s.wing.rootChord,sparTipX=tipLE+0.3*s.wing.tipChord;
+  const sparRootX=rootLE+s.sparDesign.sparXc*s.wing.rootChord,sparTipX=tipLE+s.sparDesign.sparXc*s.wing.tipChord;
 
   function plate(corners,thickness,axis='z') {
     const x=[],y=[],z=[],i=[],j=[],k=[];
@@ -49,9 +49,12 @@ AST.geometry = function (s) {
   ]);
 
   const motorX=rootLE-0.07*L,motorY=Math.min(R*0.42,Math.max(rootY+0.12,R*0.37));
-  const nacelle=sign=>loft([[-0.05,0.35],[0,0.95],[0.12,1],[0.27,0.22]],10,([along,radius],theta)=>[
-    motorX+along*L,sign*motorY+Math.cos(theta)*0.075*L*radius,Math.sin(theta)*0.065*L*radius
+  const nacelle=centerY=>loft([[-0.05,0.35],[0,0.95],[0.12,1],[0.27,0.22]],10,([along,radius],theta)=>[
+    motorX+along*L,centerY+Math.cos(theta)*0.075*L*radius,Math.sin(theta)*0.065*L*radius
   ]);
+  // Symmetric conceptual placement; actual motor stations need concept data.
+  const count=s.propulsion.prop_count;
+  const motors=Array.from({length:count},(_,index)=>({x:motorX,y:count===1?0:(2*index/(count-1)-1)*motorY,z:0}));
 
   const tailHalfSpan=Math.min(0.27*R,0.48*L),tailRootY=Math.min(tailHalfSpan*0.5,halfWidth*0.8);
   const tailLE=0.29*L,tailRootChord=0.22*L,tailTipChord=0.11*L;
@@ -66,7 +69,7 @@ AST.geometry = function (s) {
   ],Math.max(0.012,0.08*halfWidth),'y');
 
   return {
-    wingLeft:wing(-1),wingRight:wing(1),body,canopy,nacelleLeft:nacelle(-1),nacelleRight:nacelle(1),
+    wingLeft:wing(-1),wingRight:wing(1),body,canopy,motors,nacelles:motors.map(motor=>nacelle(motor.y)),
     tailLeft:horizontalTail(-1),tailRight:horizontalTail(1),verticalTail,
     cg:{x:rootLE+0.28*s.wing.rootChord,y:0,z:0},sparX:sparRootX,sparTipX,rootY,
     motorX,motorY,motorZ:0,

@@ -2,13 +2,13 @@ window.AST = window.AST || {};
 
 AST.baselineGroups = Object.freeze({
   aircraft: 'aircraft', wing: 'wing', fuselage: 'fuselage', flight: 'flight',
-  weight_budget: 'weightBudget'
+  propulsion: 'propulsion', battery: 'battery', weight_budget: 'weightBudget'
 });
 AST.baselineStructuralGroups = Object.freeze({
   landing: 'landing', material: 'material', sparDesign: 'sparDesign',
   feasibility: 'feasibility', design: 'design'
 });
-AST.baselineSourceTypes = ['BASELINE','INHA','KAU','ERAU','REQ','STRUCT','ASSUMED','TBD'];
+AST.baselineSourceTypes = ['BASELINE','INHA','KAU','ERAU','REQ','STRUCT','ASSUMED','TBD','CALC'];
 AST.baselines = [];
 AST.activeBaseline = null;
 AST.editorMode = false;
@@ -26,24 +26,32 @@ AST.baselineToState = function (baseline) {
       state[target][key]=value;
       const path=target+'.'+key;
       if(field.source_type)state.sources[path]=field.source_type;
+      state.sourceNotes[path]=field.source_note||'';
       locked.push(path);
     }
   };
   for(const [name,target] of Object.entries(AST.baselineGroups))apply(baseline[name],target);
   for(const [name,target] of Object.entries(AST.baselineStructuralGroups))
     apply(baseline.structural_inputs?.[name],target);
-  if(AST.baselineValue(baseline.wing?.ar)!==undefined){state.wing.autoAR=false;locked.push('wing.autoAR');}
-  else if(AST.baselineValue(baseline.wing?.span)!==undefined){state.wing.autoAR=true;locked.push('wing.autoAR');}
+  if(AST.baselineValue(baseline.wing?.span)!=null){state.wing.autoAR=true;locked.push('wing.autoAR');}
+  else if(AST.baselineValue(baseline.wing?.ar)!=null){state.wing.autoAR=false;locked.push('wing.autoAR');}
   if(AST.baselineValue(baseline.wing?.rootChord)!==undefined &&
      AST.baselineValue(baseline.wing?.tipChord)!==undefined){state.wing.autoChords=false;locked.push('wing.autoChords');}
   const batteryMass=AST.baselineValue(baseline.battery?.battery_mass_kg);
   if(batteryMass!==undefined){
     state.weightBudget.battery=batteryMass;
     state.sources['weightBudget.battery']=baseline.battery.battery_mass_kg.source_type||'TBD';
+    state.sourceNotes['weightBudget.battery']=baseline.battery.battery_mass_kg.source_note||'';
     locked.push('weightBudget.battery');
   }
   state.presetLocked=true;
   state.activeBaselineId=baseline.id;
+  state.baselineReference={id:baseline.id,school:baseline.school,concept_name:baseline.concept_name,
+    configuration:baseline.configuration,revision:baseline.revision,source:baseline.source||''};
+  for(const key of ['area','span','ar','taper','rootChord','tipChord']){
+    const value=AST.baselineValue(baseline.wing?.[key]);
+    if(Number.isFinite(value))state.reportedGeometry[key]=value;
+  }
   return {state:AST.synchronize(state),lockedPaths:locked};
 };
 
@@ -52,12 +60,22 @@ AST.setActiveBaseline = function(baseline){
   AST.activeBaseline=AST.clone(baseline);
   AST.baselineLockedPaths=loaded.lockedPaths;
   AST.state=loaded.state;
+  AST.selectedCandidateIndex=undefined;
+  AST.customRangeMode=false;
   AST.buildInputs();
   AST.render();
   AST.renderBaselineBar();
 };
 
 AST.baselineLabel = b => `${b.school} ${b.concept_name}`;
+// Battery mass lives only in weightBudget in the working calculation copy.
+// Metadata, exports and all calculations read that same copy.
+AST.batteryInfo = state => [
+  ['series_count','배터리 직렬 수','S','battery.series_count'],
+  ['capacity_Ah','배터리 용량','Ah','battery.capacity_Ah'],
+  ['battery_mass_kg','배터리 질량','kg','weightBudget.battery']
+].map(([key,label,unit,path])=>({key,label,unit,value:AST.get(state,path),
+  source_type:AST.get(state,path)==null?'TBD':state.sources[path]||'ASSUMED',source_note:state.sourceNotes?.[path]||''}));
 AST.duplicateBaselineData = function(base){
   const draft=AST.clone(base),original=`${base.id} r${base.revision}`;
   draft.id='';draft.concept_name='';draft.configuration='';draft.revision=0;
@@ -78,11 +96,10 @@ AST.renderBaselineBar = function(){
   select.innerHTML='<option value="">새 계산</option>'+AST.baselines.map(b=>
     `<option value="${AST.escape(b.id)}">${AST.escape(AST.baselineLabel(b))} · r${b.revision}${b.active===false?' · 비활성':''}</option>`).join('');
   select.value=AST.activeBaseline?.id||'';
-  const battery=AST.activeBaseline?.battery;
-  const series=AST.baselineValue(battery?.series_count),capacity=AST.baselineValue(battery?.capacity_Ah);
-  const mass=AST.baselineValue(battery?.battery_mass_kg);
-  document.getElementById('baselineMeta').textContent=AST.activeBaseline?
-    `${series??'—'}S ${capacity??'—'} Ah · 배터리 질량 ${mass===null||mass===undefined?'TBD':mass+' kg'} · ${AST.activeBaseline.configuration||''}`:'';
+  const [series,capacity,mass]=AST.batteryInfo(AST.state);
+  const reference=AST.state.baselineReference;
+  document.getElementById('baselineMeta').textContent=reference||series.value!=null||capacity.value!=null?
+    `${series.value??'—'}S ${capacity.value??'—'} Ah · 배터리 질량 ${mass.value==null?'TBD':mass.value+' kg'} · ${reference?.configuration||''}`:'';
   document.getElementById('baselineEditorActions').hidden=!AST.editorMode;
   document.getElementById('baselineEdit').disabled=!AST.activeBaseline;
   document.getElementById('baselineDuplicate').disabled=!AST.activeBaseline;

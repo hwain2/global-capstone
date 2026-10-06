@@ -59,9 +59,19 @@ def validate_baseline(data):
     baseline_id = data.get("id")
     if not isinstance(baseline_id, str) or not ID_PATTERN.fullmatch(baseline_id):
         errors.append("id: use 2–64 lowercase letters, digits, underscore or hyphen.")
+    elif baseline_id == "manifest":
+        errors.append("id: manifest is reserved for the public baseline list.")
     for key in ("school", "concept_name", "configuration"):
         if not isinstance(data.get(key), str) or not data[key].strip():
             errors.append(f"{key}: required text.")
+    revision = data.get("revision", 0)
+    if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
+        errors.append("revision: nonnegative integer required.")
+    if "active" in data and not isinstance(data["active"], bool):
+        errors.append("active: boolean required.")
+    for key in ("source", "notes", "inherited_from"):
+        if key in data and not isinstance(data[key], str):
+            errors.append(f"{key}: text required.")
     for group in DATA_GROUPS:
         if not isinstance(data.get(group), dict):
             errors.append(f"{group}: object required.")
@@ -78,8 +88,10 @@ def validate_baseline(data):
         for key, field in data[group].items():
             if not isinstance(field, dict) or "value" not in field or "unit" not in field or "source_type" not in field or "source_note" not in field:
                 errors.append(f"{group}.{key}: value, unit, source_type and source_note required.")
-            elif field["source_type"] not in SOURCE_TYPES:
+            elif not isinstance(field["source_type"], str) or field["source_type"] not in SOURCE_TYPES:
                 errors.append(f"{group}.{key}: invalid source_type.")
+            elif not isinstance(field["unit"], str) or not isinstance(field["source_note"], str):
+                errors.append(f"{group}.{key}: unit and source_note must be text.")
             elif field["value"] is not None and (isinstance(field["value"], bool) or
                     not isinstance(field["value"], (int, float)) or not math.isfinite(field["value"])):
                 errors.append(f"{group}.{key}: finite numeric value required.")
@@ -87,18 +99,25 @@ def validate_baseline(data):
         for key, field in structural[group].items():
             if not isinstance(field, dict) or not {"value", "unit", "source_type", "source_note"} <= field.keys():
                 errors.append(f"structural_inputs.{group}.{key}: field descriptor required.")
-            elif field["source_type"] not in SOURCE_TYPES:
+            elif not isinstance(field["source_type"], str) or field["source_type"] not in SOURCE_TYPES:
                 errors.append(f"structural_inputs.{group}.{key}: invalid source_type.")
+            elif not isinstance(field["unit"], str) or not isinstance(field["source_note"], str):
+                errors.append(f"structural_inputs.{group}.{key}: unit and source_note must be text.")
+            elif group == "design" and key == "source":
+                if field["value"] not in ("ultimate", "gust", "landing", "custom"):
+                    errors.append("structural_inputs.design.source: invalid load selection.")
             elif field["value"] is not None and (isinstance(field["value"], bool) or
                     not isinstance(field["value"], (int, float)) or not math.isfinite(field["value"])):
                 errors.append(f"structural_inputs.{group}.{key}: finite numeric value required.")
+    if errors:
+        return errors, warnings
     for path in ("propulsion.prop_count", "battery.series_count", "battery.capacity_Ah", "battery.battery_mass_kg"):
         if path.split(".")[1] not in data[path.split(".")[0]]:
             errors.append(f"{path}: descriptor required.")
     numeric_rules = {
         "aircraft.mass": (0, False), "wing.area": (0, True), "wing.span": (0, True),
         "wing.ar": (0, True), "wing.rootChord": (0, True), "wing.tipChord": (0, True),
-        "propulsion.prop_count": (1, True), "battery.series_count": (0, True),
+        "propulsion.prop_count": (1, False), "battery.series_count": (0, True),
         "battery.capacity_Ah": (0, True), "battery.battery_mass_kg": (0, False),
     }
     for path, (lower, strict) in numeric_rules.items():
@@ -110,6 +129,25 @@ def validate_baseline(data):
         if (isinstance(number, bool) or not isinstance(number, (int, float)) or
                 (number <= lower if strict else number < lower)):
             errors.append(f"{path}: invalid numeric value.")
+    # Optional inputs use calculator defaults when absent, but an explicitly
+    # supplied invalid assumption must not be persisted as a usable baseline.
+    for path in ("aircraft.nLimit", "aircraft.fs", "aircraft.g", "wing.taper",
+                 "flight.speed", "flight.rho", "flight.liftSlope", "flight.muG",
+                 "fuselage.length", "fuselage.width", "fuselage.height", "fuselage.wettedArea", "fuselage.lt",
+                 "structural_inputs.material.density", "structural_inputs.material.capStress",
+                 "structural_inputs.material.webStress", "structural_inputs.material.elasticModulusGPa",
+                 "structural_inputs.landing.stop", "structural_inputs.sparDesign.capWidthMm",
+                 "structural_inputs.sparDesign.capWidthRatio", "structural_inputs.sparDesign.localThicknessMm",
+                 "structural_inputs.sparDesign.manufacturingMinCapMm", "structural_inputs.sparDesign.manufacturingMinWebMm",
+                 "structural_inputs.feasibility.tipDeflectionLimitMm", "structural_inputs.feasibility.mtowLimit",
+                 "structural_inputs.feasibility.designTarget"):
+        number = value(data, path)
+        if number is not None and number <= 0:
+            errors.append(f"{path}: positive value required.")
+    for path in ("flight.gustSpeed", "structural_inputs.landing.drop"):
+        number = value(data, path)
+        if number is not None and number < 0:
+            errors.append(f"{path}: nonnegative value required.")
     props = value(data, "propulsion.prop_count")
     if props is not None and (not isinstance(props, int) or isinstance(props, bool)):
         errors.append("propulsion.prop_count: integer required.")
@@ -122,10 +160,14 @@ def validate_baseline(data):
     for key, field in data["weight_budget"].items():
         if isinstance(field, dict) and isinstance(field.get("value"), (int, float)) and field["value"] < 0:
             errors.append(f"weight_budget.{key}: mass must be nonnegative.")
-    for path in ("wing.tc", "structural_inputs.sparDesign.depthFactor", "structural_inputs.sparDesign.sparXc"):
+    for path in ("wing.tc", "structural_inputs.sparDesign.sparXc"):
         measure = value(data, path)
         if measure is not None and (not isinstance(measure, (int, float)) or not 0 < measure < 1):
             errors.append(f"{path}: value must be between 0 and 1.")
+    for path in ("structural_inputs.sparDesign.depthFactor", "structural_inputs.sparDesign.capWidthRatio"):
+        measure = value(data, path)
+        if measure is not None and not 0 < measure <= 1:
+            errors.append(f"{path}: value must be positive and no greater than 1.")
     area, span, ar = (value(data, p) for p in ("wing.area", "wing.span", "wing.ar"))
     if span is None and ar is None:
         errors.append("wing: span or AR required.")
@@ -143,6 +185,10 @@ def validate_baseline(data):
             warnings.append(f"Geometry consistency: reported area {area:g} m², trapezoid {computed:.3f} m².")
     if any(k in data["weight_budget"] for k in ("battery",)):
         errors.append("weight_budget.battery: store battery mass only in battery.battery_mass_kg.")
+    if value(data, "structural_inputs.design.source") == "custom":
+        custom_load = value(data, "structural_inputs.design.customLoad")
+        if custom_load is None or custom_load <= 0:
+            errors.append("structural_inputs.design.customLoad: positive custom load required.")
     return errors, warnings
 
 
@@ -169,7 +215,7 @@ class BaselineStore:
         return sqlite3.connect(self.db_path)
 
     def _path(self, baseline_id):
-        if not ID_PATTERN.fullmatch(baseline_id):
+        if not isinstance(baseline_id, str) or not ID_PATTERN.fullmatch(baseline_id) or baseline_id == "manifest":
             raise BaselineError("Invalid baseline id.")
         return self.data_dir / f"{baseline_id}.json"
 
@@ -215,10 +261,12 @@ class BaselineStore:
         self.git_runner(["add", "--", *files])
         self.git_runner(["commit", "--only", "-m", message, "--", *files])
 
-    def save(self, submitted, editor, note=""):
+    def save(self, submitted, editor, note="", *, operation=None):
         if not isinstance(editor, str) or not editor.strip() or len(editor) > 100:
             raise BaselineError("Editor name is required (maximum 100 characters).")
         editor = editor.strip()
+        if not isinstance(note, str):
+            raise BaselineError("Change note must be text.")
         errors, warnings = validate_baseline(submitted)
         if errors:
             raise BaselineError("; ".join(errors))
@@ -229,6 +277,10 @@ class BaselineStore:
             except FileNotFoundError:
                 previous = None
             expected = submitted.get("revision", 0)
+            if operation == "create" and previous:
+                raise RevisionConflict(previous, submitted)
+            if operation == "update" and not previous:
+                raise FileNotFoundError(baseline_id)
             if previous and expected != previous["revision"]:
                 raise RevisionConflict(previous, submitted)
             if not previous and expected not in (0, None):
@@ -241,6 +293,8 @@ class BaselineStore:
             current["updated_at"] = now
             current["updated_by"] = editor
             current.setdefault("active", True)
+            current.setdefault("source", "")
+            current.setdefault("notes", "")
             self._atomic_json(self._path(baseline_id), current)
             self._manifest()
             before, after = flatten(previous or {}), flatten(current)
@@ -256,8 +310,13 @@ class BaselineStore:
                               VALUES(?,?,?,?,?,?)""", (baseline_id, editor, now, current["revision"], note, "pending"))
             commit_status = "committed"
             try:
-                self._commit(baseline_id, f"Update {current['school']} {current['concept_name']} baseline r{current['revision']}")
-            except (RuntimeError, subprocess.TimeoutExpired, ValueError) as error:
+                message = f"Update {current['school']} {current['concept_name']} baseline r{current['revision']}\n\nEditor: {editor}"
+                if note:
+                    message += f"\nNote: {note}"
+                message += "\n\n" + "\n".join(f"{field}: {json.dumps(old, ensure_ascii=False)} -> {json.dumps(new, ensure_ascii=False)}"
+                                             for field, old, new in changes)
+                self._commit(baseline_id, message)
+            except (RuntimeError, subprocess.TimeoutExpired, ValueError, OSError) as error:
                 commit_status = f"failed: {error}"
             with self._db() as db:
                 db.execute("UPDATE events SET commit_status=? WHERE baseline_id=? AND revision=?",

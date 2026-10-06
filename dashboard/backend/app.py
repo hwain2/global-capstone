@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import os
+import json
+import subprocess
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -43,6 +45,12 @@ def create_app(mode=None, store=None):
         return item
 
     if mode == "EDITOR_MODE":
+        async def json_body(request: Request):
+            try:
+                return await request.json()
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                raise HTTPException(400, "Invalid JSON body")
+
         def same_origin(request: Request):
             origin = request.headers.get("origin")
             if origin and urlparse(origin).netloc != request.headers.get("host"):
@@ -51,23 +59,28 @@ def create_app(mode=None, store=None):
         @app.post("/api/baselines/validate")
         async def validate(request: Request):
             same_origin(request)
-            errors, warnings = validate_baseline(await request.json())
+            errors, warnings = validate_baseline(await json_body(request))
             return {"errors": errors, "warnings": warnings}
 
         async def write_baseline(request: Request, baseline_id=None):
             same_origin(request)
-            body = await request.json()
+            body = await json_body(request)
+            if not isinstance(body, dict):
+                raise HTTPException(400, "JSON object required")
             data = body.get("baseline")
             editor = body.get("editor")
             if not isinstance(data, dict) or baseline_id and data.get("id") != baseline_id:
                 raise HTTPException(400, "Baseline id mismatch")
             try:
-                return store.save(data, editor, body.get("note", ""))
+                return store.save(data, editor, body.get("note", ""),
+                                  operation="update" if baseline_id else "create")
             except RevisionConflict as error:
                 raise HTTPException(409, {"message": str(error), "latest": error.latest,
                                           "submitted": error.submitted})
             except BaselineError as error:
                 raise HTTPException(422, str(error))
+            except FileNotFoundError:
+                raise HTTPException(404, "Baseline not found")
 
         @app.post("/api/baselines")
         async def create(request: Request):
@@ -90,7 +103,7 @@ def create_app(mode=None, store=None):
             same_origin(request)
             try:
                 return store.sync()
-            except (BaselineError, RuntimeError) as error:
+            except (BaselineError, RuntimeError, subprocess.TimeoutExpired) as error:
                 raise HTTPException(409, str(error))
 
         @app.get("/api/ai/status")

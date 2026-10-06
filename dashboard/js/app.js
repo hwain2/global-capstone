@@ -4,6 +4,7 @@ AST.fields = [
   {group:'주익',items:[['wing.area','날개 면적 S','m²'],['wing.autoAR','주익 형상 입력 기준','bool'],['wing.span','날개폭 b','m'],['wing.ar','가로세로비 AR','—'],['wing.taper','테이퍼비','—'],['wing.autoChords','시위 입력 기준','bool'],['wing.rootChord','익근 시위','m'],['wing.tipChord','익단 시위','m'],['wing.mac','평균공력시위 MAC','m'],['wing.equivChord','등가 직사각형 시위 S/b','m'],['wing.sweep','앞전 후퇴각','deg'],['wing.quarterSweep','1/4 시위 후퇴각','deg'],['wing.tc','최대 두께비 t/c','—']]},
   {group:'동체',items:[['fuselage.length','동체 길이','m'],['fuselage.width','최대 폭','m'],['fuselage.height','최대 높이','m'],['fuselage.wettedArea','기준·젖은 면적','m²'],['fuselage.ld','길이/직경비 l/d','—'],['fuselage.lt','Raymer Lt','m']]},
   {group:'비행 조건',items:[['flight.speed','순항속도 V','m/s'],['flight.rho','공기밀도 ρ','kg/m³'],['flight.q','동압 q = ½ρV²','Pa'],['flight.cruiseCL','순항 CL','—'],['flight.ld','순항 L/D','—'],['flight.gustSpeed','돌풍속도 Ude','m/s'],['flight.liftSlope','양력곡선기울기 a','1/rad'],['flight.muG','돌풍 질량비 μg','—']]},
+  {group:'추진·배터리',items:[['propulsion.prop_count','프로펠러 수','count'],['battery.series_count','배터리 직렬 수','S'],['battery.capacity_Ah','배터리 용량','Ah']]},
   {group:'착륙 조건',items:[['landing.drop','낙하 높이 h','m'],['landing.stop','정지 거리 s','m']]},
   {group:'재료·구조',items:[['material.density','재료 밀도','kg/m³'],['material.capStress','캡 허용응력','MPa'],['material.webStress','웹 허용전단응력','MPa'],['material.elasticModulusGPa','스파 탄성계수 E','GPa']]},
   {group:'스파 자동 탐색 · STRUCT',items:[['sparDesign.depthFactor','깊이 활용률 (0~1)','—'],['sparDesign.sparXc','가정 스파 위치 x/c','—'],['sparDesign.localThicknessMm','실제 스파 위치 두께 (선택)','mm'],['sparDesign.capWidthRatio','최소 캡 폭 / 시위','—'],['sparDesign.capWidthMm','실제 캡 폭 (선택 · 폭 고정)','mm'],['sparDesign.manufacturingMinCapMm','가정 최소 캡 두께','mm'],['sparDesign.manufacturingMinWebMm','가정 최소 웹 두께','mm']]},
@@ -28,6 +29,7 @@ AST.inputSteps = Object.freeze({
   'sparDesign.selectedWebThicknessMm':0.01, 'sparDesign.manufacturingMinWebMm':0.01,
   'sparDesign.capWidthRatio':0.01, 'sparDesign.capWidthMm':0.5, 'sparDesign.manufacturingMinCapMm':0.01,
   'design.customLoad':5,
+  'propulsion.prop_count':1, 'battery.series_count':1, 'battery.capacity_Ah':0.1,
   'feasibility.mtowLimit':0.1, 'feasibility.designTarget':0.1,
   'feasibility.tipDeflectionMm':0.5, 'feasibility.tipDeflectionLimitMm':0.5,
   'feasibility.stallSpeedLimit':0.1, 'feasibility.airfoilClMax':0.01,
@@ -152,6 +154,7 @@ AST.onInput = function(e) {
   const presetStatus=document.getElementById('presetStatus');
   if(presetStatus.textContent && !AST.state.presetLocked) presetStatus.textContent='기준값 적용 후 수정됨';
   AST.render();
+  if(path.startsWith('battery.')||path==='weightBudget.battery')AST.renderBaselineBar();
 };
 AST.resultHTML = function(d,r) {
   const meta=AST.resultMeta(d),value=d.read(r);
@@ -243,7 +246,7 @@ AST.render = function() {
 AST.sanitizeImported = function(input){
   if(!input || typeof input!=='object')throw Error('JSON에는 객체가 있어야 합니다.');
   const next=AST.clone(AST.defaults);
-  for(const group of ['aircraft','wing','fuselage','flight','landing','material','sparDesign','design','display','sensitivity','feasibility','weightBudget']) {
+  for(const group of ['aircraft','wing','fuselage','flight','propulsion','battery','landing','material','sparDesign','design','display','sensitivity','feasibility','weightBudget']) {
     if(!input[group]||typeof input[group]!=='object')continue;
     for(const key of Object.keys(next[group])){
       if(!(key in input[group]))continue;
@@ -256,6 +259,20 @@ AST.sanitizeImported = function(input){
   }
   if(input.sources && typeof input.sources==='object')for(const [path,source] of Object.entries(input.sources)){
     if(AST.baselineSourceTypes.includes(source) && (AST.fields.some(g=>g.items.some(x=>x[0]===path))||AST.feasibilityFields.some(x=>x[0]===path)||AST.budgetFields.some(x=>x[0]===path)||path==='design.customLoad'))next.sources[path]=source;
+  }
+  if(input.sourceNotes && typeof input.sourceNotes==='object')for(const path of AST.allSourcePaths()){
+    if(typeof input.sourceNotes[path]==='string')next.sourceNotes[path]=input.sourceNotes[path];
+  }
+  if(input.baselineReference && typeof input.baselineReference==='object'){
+    const reference={};
+    for(const key of ['id','school','concept_name','configuration','source']){
+      if(typeof input.baselineReference[key]==='string')reference[key]=input.baselineReference[key];
+    }
+    if(Number.isInteger(input.baselineReference.revision))reference.revision=input.baselineReference.revision;
+    if(reference.id&&reference.school&&reference.concept_name)next.baselineReference=reference;
+  }
+  for(const key of Object.keys(input.reportedGeometry||{})){
+    if(['area','span','ar','taper','rootChord','tipChord'].includes(key)&&Number.isFinite(input.reportedGeometry[key]))next.reportedGeometry[key]=input.reportedGeometry[key];
   }
   if(!['ultimate','gust','landing','custom'].includes(next.design.source))next.design.source='ultimate';
   next.presetLocked=false;
@@ -292,7 +309,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('loadJSON').addEventListener('change',async e=>{
     const file=e.target.files[0];if(!file)return;
     const status=document.getElementById('importStatus');
-    try{AST.activeBaseline=null;AST.baselineLockedPaths=[];AST.state=AST.sanitizeImported(JSON.parse(await file.text()));AST.buildInputs();AST.render();AST.renderBaselineBar();document.getElementById('presetStatus').textContent='';status.textContent=file.name+'에서 입력값을 불러왔습니다.';}
+    try{const next=AST.sanitizeImported(JSON.parse(await file.text()));AST.activeBaseline=null;AST.baselineLockedPaths=[];AST.selectedCandidateIndex=undefined;AST.state=next;AST.buildInputs();AST.render();AST.renderBaselineBar();document.getElementById('presetStatus').textContent='';status.textContent=file.name+'에서 입력값을 불러왔습니다.';}
     catch(err){status.textContent='JSON을 불러오지 못했습니다: '+err.message;}
     e.target.value='';
   });

@@ -1,6 +1,10 @@
 window.AST = window.AST || {};
 AST.validate = function (s) {
   const errors = [];
+  const propCount=s.propulsion.prop_count;
+  if(!Number.isInteger(propCount)||propCount<1)errors.push('프로펠러 수: 1 이상의 정수를 입력하세요.');
+  if(s.battery.series_count!==null&&(!Number.isInteger(s.battery.series_count)||s.battery.series_count<1))errors.push('배터리 직렬 수: 1 이상의 정수를 입력하세요.');
+  if(s.battery.capacity_Ah!==null&&(!Number.isFinite(s.battery.capacity_Ah)||s.battery.capacity_Ah<=0))errors.push('배터리 용량: 0보다 큰 값을 입력하세요.');
   const positive = [
     ['aircraft.mass','최대이륙질량'], ['aircraft.nLimit','제한 하중계수'], ['aircraft.fs','안전계수'], ['aircraft.g','중력가속도'],
     ['wing.area','날개 면적'], ['wing.span','날개폭'], ['wing.ar','가로세로비'], ['wing.rootChord','익근 시위'],
@@ -44,6 +48,11 @@ AST.geometryChecks = function(s){
   add('AR = b²/S',w.ar,w.span*w.span/w.area,'—');
   add('S = b(cr+ct)/2',w.span*(w.rootChord+w.tipChord)/2,w.area,'m²',!w.autoChords&&relative(w.span*(w.rootChord+w.tipChord)/2,w.area)>0.02);
   add('Taper = ct/cr',w.taper,w.tipChord/w.rootChord,'—');
+  const reported=s.reportedGeometry||{};
+  if(Number.isFinite(reported.ar)&&relative(reported.ar,w.ar)>.02)
+    add('원본 보고 AR / b²/S',reported.ar,w.ar,'—',true);
+  if(Number.isFinite(reported.taper)&&!w.autoChords&&relative(reported.taper,w.taper)>.02)
+    add('원본 보고 taper / ct/cr',reported.taper,w.taper,'—',true);
   add('MAC (trapezoid)',w.mac,AST.trapezoidMAC(w.rootChord,w.tipChord),'m');
   add('1/4 시위 후퇴각 (앞전 후퇴각·시위에서 계산)',w.quarterSweep,Math.atan(Math.tan(w.sweep*Math.PI/180)-(w.rootChord-w.tipChord)/(2*w.span))*180/Math.PI,'deg');
   add('익근 최대두께 = cr(t/c)',w.rootChord*w.tc*1000,w.rootChord*w.tc*1000,'mm');

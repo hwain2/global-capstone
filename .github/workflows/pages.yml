@@ -1,0 +1,53 @@
+name: Verify calculator and deploy public Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ['dashboard/**', '.github/workflows/pages.yml']
+  pull_request:
+    paths: ['dashboard/**', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run calculator tests
+        working-directory: dashboard
+        run: |
+          node tests/baselines.test.js
+          node tests/optimization.test.js
+          node tests/baseline-editor.test.js
+          python3 -m venv .venv
+          .venv/bin/python -m pip install -r backend/requirements-dev.txt
+          .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Build static public calculator
+        run: python3 dashboard/scripts/build_public.py "$RUNNER_TEMP/public-site"
+      - name: Upload Pages artifact
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ${{ runner.temp }}/public-site
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: verify-and-build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+      - name: Deploy static calculator
+        id: deployment
+        uses: actions/deploy-pages@v4

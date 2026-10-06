@@ -74,7 +74,7 @@ sudo systemctl reload nginx
 1. 내부판에서 Baseline을 선택하고 `수정`, `복제`, `+ 새 Baseline` 중 하나를 엽니다.
 2. `Editor Name`과 출처 메모를 입력합니다. 질량·면적 등 오류는 저장하지 않고, AR/시위/면적 불일치는 경고로 표시합니다.
 3. 저장하면 JSON을 원자적으로 교체하고, SQLite에 필드별 이전값·새값·편집자·시각·revision을 기록한 뒤 변경된 Baseline JSON과 manifest만 로컬 Git commit합니다.
-4. 다른 사람이 먼저 저장해 revision이 달라졌다면 HTTP 409와 최신값을 보여주고 덮어쓰지 않습니다.
+4. 다른 사람이 먼저 저장해 revision이 달라졌다면 HTTP 409와 최신값을 보여주고 덮어쓰지 않습니다. 겹친 항목마다 최신값 또는 내 수정을 선택해 최신 revision 기준으로 폼을 병합한 뒤 다시 저장합니다.
 5. `GitHub Sync`를 별도로 누르면 `origin/main`을 확인한 후 push합니다. 원격이 앞서 있거나 네트워크가 끊기면 동기화가 실패하며 로컬 JSON·SQLite·commit은 유지됩니다. 원격이 앞섰다면 서버 관리자가 충돌을 검토하고 Git에서 병합해야 합니다.
 6. GitHub Pages 배포가 완료되면 공개판이 새 manifest/JSON을 읽습니다.
 
@@ -86,6 +86,7 @@ sudo systemctl reload nginx
 cd /srv/global-capstone/dashboard
 node tests/optimization.test.js
 node tests/baselines.test.js
+node tests/baseline-editor.test.js
 .venv/bin/python -m pip install -r backend/requirements-dev.txt
 .venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 ```
@@ -95,3 +96,60 @@ node tests/baselines.test.js
 ## 향후 AI 연결
 
 `backend/ai_service.py`에 선택적 `BaselineAI` 인터페이스와 비활성 구현이 있습니다. `GET /api/ai/status`는 현재 비활성을 알리고, parse/review/compare 요청은 503을 반환합니다. 별도 RTX 3060 Ti PC의 모델을 연결할 때도 AI 출력은 입력 후보로만 취급하고 사람 확인 후에만 Baseline을 저장하도록 유지합니다. AI 서버가 꺼져 있어도 편집·계산·이력·Git 기능은 독립적으로 동작합니다.
+
+## 요구사항 점검 및 보완 (2026-10-06)
+
+여러 학교의 Baseline JSON, 내부 편집·복제·비활성화, 이력·revision, 공개판 쓰기 차단, 선택적 AI 인터페이스와 기존 계산 엔진은 이미 구현되어 있습니다. 이번 점검에서는 아래 항목을 보완했습니다.
+
+- 프로펠러 수 1을 유효한 입력으로 허용하고, 잘못된 revision·필드 출처·수치·요청 JSON을 저장 전에 차단합니다. 새 Baseline 생성 요청은 기존 ID를 덮어쓰지 않으며 수정 요청은 없는 ID를 생성하지 않습니다.
+- 충돌 시 최신 revision과 내 수정의 변경점을 비교합니다. 서로 다른 항목의 수정은 보존하고, 같은 항목은 최신값/내 수정 중 하나를 선택한 후 편집을 계속합니다. 변경 사유도 유지되며 병합만으로 저장하지 않습니다. 저장 직전에 다른 사람이 또 수정하면 다시 충돌 검사를 합니다.
+- 저장 성공 응답으로 계산을 즉시 갱신합니다. 이후 목록 조회가 실패해도 저장된 값과 계산 결과는 유지하고 목록 갱신 실패만 알립니다.
+- 작업용 입력값 JSON에 배터리 직렬 수·용량·프로펠러 수·원본 Baseline 정보·출처 메모를 함께 저장합니다. 배터리 질량은 작업용 `weightBudget.battery` 한 곳에 두며, 화면·중량 예산·CSV·요약이 같은 값을 읽습니다. 예전 형식의 입력값 파일도 불러올 수 있습니다.
+- 3D에는 JSON에 입력된 프로펠러 수와 스파 위치를 반영합니다. 모터 위치는 실제 좌표가 없는 상태의 대칭 개념 배치이며 실제 기체의 추진 배치 검증은 별도입니다.
+- AR와 날개폭을 함께 제공하면 날개폭을 계산 기준으로 삼고, 원본 보고 AR의 불일치를 경고합니다. 익근·익단 시위를 함께 제공하면 taper를 계산하고 원본 보고값과 비교합니다. 원본 JSON은 자동으로 덮어쓰지 않습니다.
+- 기존 스파 단면, 실제 위치 두께·캡 폭, 재료 경험식 계수와 비교용 하중도 편집기에서 설정할 수 있습니다. 바꾸지 않은 필드의 단위·출처·상속 메모는 그대로 보존합니다. 자동 스파 sizing의 지배 기동·돌풍하중 및 제한하중 처짐 계산은 유지합니다.
+- Local Git commit 메시지에 편집자·변경 사유·필드별 이전값/새값을 기록합니다. commit 실패 시에도 JSON과 이력을 보존하며 UI에 실패를 표시합니다. sync 시간 초과도 데이터 손실 없이 실패로 처리합니다.
+
+### GitHub Pages 자동 갱신
+
+저장소 루트의 `.github/workflows/pages.yml`은 `main` 변경 시 계산·편집기·서비스 테스트를 실행한 후 정적 공개판을 배포합니다. PR에서는 검증만 수행합니다. 공개 아티팩트에는 HTML·CSS·JS·활성 Baseline JSON만 포함되며 Python backend, SQLite, 실행환경, Git 저장소는 포함되지 않습니다. 기존 `/global-capstone/dashboard/` 주소를 유지합니다.
+
+[GitHub 공식 배포 안내](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)에 따라 저장소 관리자가 GitHub의 **Settings → Pages → Build and deployment → Source**를 **GitHub Actions**로 한 번 설정해야 합니다. 이후 내부 서버의 `GitHub Sync`로 `main`에 push하면 테스트와 Pages 배포가 실행됩니다. 배포가 실패하면 GitHub Actions 로그를 확인하세요. 로컬 저장·commit은 그대로 남습니다. 기존 branch 방식의 Pages를 계속 사용하는 경우 해당 방식으로도 JSON은 갱신되지만, 이 workflow의 정적 아티팩트 배포에는 Actions 설정이 필요합니다.
+
+공개판 아티팩트를 로컬에서 확인하려면 비어 있는 새 출력 폴더를 사용합니다.
+
+```bash
+cd /srv/global-capstone/dashboard
+python3 scripts/build_public.py /tmp/knu-public-preview
+python3 -m http.server 8080 --bind 127.0.0.1 --directory /tmp/knu-public-preview
+# http://127.0.0.1:8080/dashboard/
+```
+
+### 내부 서버 Git 작성자와 remote
+
+서비스 사용자 계정으로 다음을 설정합니다. `YOUR_SERVICE_EMAIL`은 실제 사용할 이메일로 바꾸세요. Editor Name은 각 변경의 이력과 commit 본문에 기록하고, Git 작성자는 서버 서비스 계정으로 구분합니다.
+
+```bash
+cd /srv/global-capstone
+git config user.name "KNU Baseline Server"
+git config user.email "YOUR_SERVICE_EMAIL"
+git remote -v
+# 기존 clone이 HTTPS이고 SSH 인증을 사용할 경우:
+git remote set-url origin git@github.com:hwain2/global-capstone.git
+```
+
+Git 쓰기 인증과 서버 설정의 실제 사용자·DNS·허용 대역은 운영 환경에서 설정해야 합니다. 코드와 배포 예시만으로 학교 서버가 자동으로 설정되는 것은 아닙니다.
+
+### 필수 테스트 대응
+
+| 요구사항 테스트 | 검증 위치 |
+| --- | --- |
+| 1–3: 12S 3.3 Ah, 기존 계산, JSON 로딩 | `tests/baselines.test.js` |
+| 4–6: 복제, 재시작/새로고침, 다른 클라이언트의 동일 데이터 | `tests/test_baseline_service.py`, `tests/test_baseline_api.py` |
+| 7–8: Baseline 전환 시 전체 재계산, 이전 값 제거 | `tests/baseline-editor.test.js`, `tests/baselines.test.js` |
+| 9–10: 편집자·필드 이력, 오래된 revision 차단·병합 | 서비스/API 테스트, `tests/baseline-editor.test.js` |
+| 11–13: 오프라인 저장, 로컬 commit, sync 실패·시간 초과·push 거절 시 데이터 보존 | 서비스/API 테스트 |
+| 14–16: 공개판 편집 UI 없음, 쓰기 라우트 없음, 내부 CRUD | 편집기/API 테스트, `tests/test_public_build.py` |
+| 17–19: 동일 입력 계산 결과, 강도·강성·처짐·동일 엔진 | `tests/baselines.test.js`, `tests/optimization.test.js` |
+
+위 검증 명령으로 JavaScript 테스트 3종과 Python 테스트를 함께 실행합니다. 테스트는 임시 Baseline과 임시 Git 저장소를 사용합니다. 실제 학교망 접속, GitHub 쓰기 인증, Pages의 실 배포 성공은 배포 환경에서 확인해야 합니다. 그래프·3D용 Plotly는 CDN에서 불러오므로 인터넷 연결이 필요합니다.

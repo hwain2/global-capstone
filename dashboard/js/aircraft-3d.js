@@ -21,14 +21,13 @@ AST.render3D = function (s,r) {
     traces.push(mesh(g.tailLeft,'#6f9dbb',0.96,'왼쪽 수평꼬리날개'));
     traces.push(mesh(g.tailRight,'#6f9dbb',0.96,'오른쪽 수평꼬리날개'));
     traces.push(mesh(g.verticalTail,'#82abc8',0.98,'수직꼬리날개'));
-    traces.push(mesh(g.nacelleLeft,'#bdcbd7',0.98,'왼쪽 모터 나셀'));
-    traces.push(mesh(g.nacelleRight,'#bdcbd7',0.98,'오른쪽 모터 나셀'));
+    for(const [index,nacelle] of g.nacelles.entries())traces.push(mesh(nacelle,'#bdcbd7',0.98,`모터 나셀 ${index+1}`));
     for(const wing of [g.wingLeft,g.wingRight]){
       traces.push(edge([wing.x[0],wing.x[3]],[wing.y[0],wing.y[3]],[wing.z[0],wing.z[3]],'#d0e9f6',3,'주익 앞전'));
       traces.push(edge([wing.x[1],wing.x[2]],[wing.y[1],wing.y[2]],[wing.z[1],wing.z[2]],'#557c9c',2,'주익 뒷전'));
     }
-    for(const sign of [-1,1]) {
-      const centerY=sign*g.motorY,propX=g.motorX-0.035*s.fuselage.length;
+    for(const motor of g.motors) {
+      const centerY=motor.y,propX=motor.x-0.035*s.fuselage.length;
       traces.push({type:'scatter3d',mode:'markers',x:[g.motorX],y:[centerY],z:[g.motorZ],marker:{size:9,color:'#e9ae75',symbol:'circle'},name:'모터',hoverinfo:'skip',showlegend:false});
       const yy=[],zz=[];
       for(let a=0;a<=32;a++){const theta=2*Math.PI*a/32;yy.push(centerY+g.propRadius*Math.cos(theta));zz.push(g.motorZ+g.propRadius*Math.sin(theta));}

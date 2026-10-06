@@ -35,3 +35,5 @@
 .spar-section-facts strong{font-size:12px}
 .spar-section-compact small{grid-column:1/-1;color:#91aebf;font-size:10px}
 @media(max-width:620px){.spar-section-compact{grid-template-columns:1fr}.spar-section-compact small{grid-column:1}.spar-section-compact svg{max-width:380px}}
+
+.baseline-meta-grid select,.baseline-conflict-table select{width:100%;padding:8px;color:var(--text);background:#0e2031;border:1px solid #456780;border-radius:7px}.baseline-conflict-table{min-width:620px}.baseline-conflict-table td{overflow-wrap:anywhere;max-width:260px}.baseline-conflict-table select{min-width:100px}

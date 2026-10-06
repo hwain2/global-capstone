@@ -62,6 +62,10 @@ class BaselineServiceTests(unittest.TestCase):
         message = subprocess.run(["git", "-C", str(self.repo), "log", "-1", "--pretty=%s"],
                                  check=True, capture_output=True, text=True).stdout
         self.assertIn("r2", message)
+        body = subprocess.run(["git", "-C", str(self.repo), "log", "-1", "--pretty=%B"],
+                              check=True, capture_output=True, text=True).stdout
+        self.assertIn("Editor: KNU member", body)
+        self.assertIn("battery.capacity_Ah.value: 3.3 -> 3.4", body)
         with self.assertRaises(RevisionConflict):
             self.store.save(edited, "stale member")
 
@@ -86,6 +90,117 @@ class BaselineServiceTests(unittest.TestCase):
         draft = self.store.get("inha_2prop"); draft["active"] = True
         self.store.save(draft, "KNU member")
         self.assertEqual(len(self.store.list(active_only=True)), 1)
+
+    def test_validation_accepts_single_prop_and_rejects_invalid_schema(self):
+        single = copy.deepcopy(BASELINE)
+        single["propulsion"]["prop_count"]["value"] = 1
+        single["aircraft"]["mass"]["value"] = 0
+        self.assertEqual(validate_baseline(single)[0], [])
+        for group, key, invalid in (("propulsion", "prop_count", 1.5), ("battery", "series_count", 0),
+                                    ("battery", "capacity_Ah", 0), ("wing", "area", -1)):
+            data = copy.deepcopy(BASELINE)
+            data[group][key]["value"] = invalid
+            self.assertTrue(validate_baseline(data)[0])
+        for patch in ({"revision": True}, {"revision": -1}, {"active": "false"}, {"id": "manifest"}):
+            data = copy.deepcopy(BASELINE); data.update(patch)
+            self.assertTrue(validate_baseline(data)[0])
+        for key, invalid in (("source_type", []), ("source_note", {}), ("unit", []), ("value", float("nan"))):
+            data = copy.deepcopy(BASELINE); data["wing"]["area"][key] = invalid
+            self.assertTrue(validate_baseline(data)[0])
+        data = copy.deepcopy(BASELINE)
+        data["structural_inputs"]["material"]["elasticModulusGPa"] = {
+            "value": -70, "unit": "GPa", "source_type": "ASSUMED", "source_note": "invalid"}
+        self.assertTrue(validate_baseline(data)[0])
+
+    def test_geometry_warnings_allow_save(self):
+        data = self.store.get("inha_2prop")
+        for key, number in (("span", 1.5), ("rootChord", .8), ("tipChord", .4)):
+            data["wing"][key] = {"value": number, "unit": "m", "source_type": "INHA", "source_note": "reported"}
+        errors, warnings = validate_baseline(data)
+        self.assertEqual(errors, [])
+        self.assertEqual(len(warnings), 3)
+        result = self.store.save(data, "KNU", "reported geometry")
+        self.assertEqual(result["baseline"]["revision"], 2)
+        self.assertEqual(result["warnings"], warnings)
+
+    def test_create_and_update_do_not_overwrite_the_wrong_resource(self):
+        data = self.store.get("inha_2prop")
+        with self.assertRaises(RevisionConflict):
+            self.store.save(data, "KNU", operation="create")
+        data.update(id="missing_concept", revision=0)
+        with self.assertRaises(FileNotFoundError):
+            self.store.save(data, "KNU", operation="update")
+        self.assertFalse((self.root / "data/baselines/missing_concept.json").exists())
+        self.assertEqual(self.store.get("inha_2prop")["revision"], 1)
+
+    def test_git_commit_failure_keeps_json_and_history(self):
+        def unavailable(args):
+            raise RuntimeError("Git identity is missing")
+        store = BaselineStore(self.root, git_runner=unavailable)
+        data = store.get("inha_2prop"); data["battery"]["capacity_Ah"]["value"] = 4
+        result = store.save(data, "KNU", "offline")
+        self.assertIn("failed:", result["commit_status"])
+        self.assertEqual(store.get("inha_2prop")["battery"]["capacity_Ah"]["value"], 4)
+        self.assertTrue(any(row["field"] == "battery.capacity_Ah.value" for row in store.history("inha_2prop")))
+
+    def _local_remote(self):
+        remote = self.repo / "remote.git"
+        subprocess.run(["git", "init", "--bare", "-q", str(remote)], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "remote", "add", "origin", str(remote)], check=True)
+        subprocess.run(["git", "-C", str(self.repo), "push", "-q", "origin", "HEAD:main"], check=True)
+        return remote
+
+    def test_explicit_sync_pushes_saved_baselines(self):
+        remote = self._local_remote()
+        data = self.store.get("inha_2prop"); data["battery"]["capacity_Ah"]["value"] = 4
+        before = subprocess.run(["git", "--git-dir", str(remote), "rev-parse", "main"], capture_output=True, text=True, check=True).stdout
+        self.store.save(data, "KNU")
+        self.assertEqual(subprocess.run(["git", "--git-dir", str(remote), "rev-parse", "main"], capture_output=True, text=True, check=True).stdout, before,
+                         "saving never automatically pushes")
+        with patch.dict(os.environ, {"AST_GIT_BRANCH": "main"}):
+            self.assertEqual(self.store.sync()["status"], "synced")
+        pushed = subprocess.run(["git", "--git-dir", str(remote), "show", "main:dashboard/data/baselines/inha_2prop.json"], capture_output=True, text=True, check=True).stdout
+        self.assertEqual(json.loads(pushed)["battery"]["capacity_Ah"]["value"], 4)
+
+    def test_remote_ahead_preserves_saved_data(self):
+        remote = self._local_remote()
+        other = self.repo / "other_pc"
+        subprocess.run(["git", "clone", "-q", "-b", "main", str(remote), str(other)], check=True)
+        (other / "README.md").write_text("Other member update")
+        subprocess.run(["git", "-C", str(other), "add", "README.md"], check=True)
+        subprocess.run(["git", "-C", str(other), "commit", "-qm", "Other update"], check=True)
+        subprocess.run(["git", "-C", str(other), "push", "-q", "origin", "main"], check=True)
+        data = self.store.get("inha_2prop"); data["battery"]["capacity_Ah"]["value"] = 4
+        self.store.save(data, "KNU")
+        before = self.store.get("inha_2prop"), self.store.history("inha_2prop")
+        with patch.dict(os.environ, {"AST_GIT_BRANCH": "main"}):
+            with self.assertRaisesRegex(BaselineError, "newer commits"):
+                self.store.sync()
+        self.assertEqual((self.store.get("inha_2prop"), self.store.history("inha_2prop")), before)
+
+    def test_push_rejection_preserves_json_history_and_commit(self):
+        remote = self._local_remote()
+        hook = remote / "hooks/pre-receive"
+        hook.write_text("#!/bin/sh\nexit 1\n"); hook.chmod(0o755)
+        data = self.store.get("inha_2prop"); data["battery"]["capacity_Ah"]["value"] = 4
+        self.store.save(data, "KNU")
+        before = self.store.get("inha_2prop"), self.store.history("inha_2prop")
+        head = subprocess.run(["git", "-C", str(self.repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout
+        with patch.dict(os.environ, {"AST_GIT_BRANCH": "main"}):
+            with self.assertRaises(RuntimeError):
+                self.store.sync()
+        self.assertEqual((self.store.get("inha_2prop"), self.store.history("inha_2prop")), before)
+        self.assertEqual(subprocess.run(["git", "-C", str(self.repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout, head)
+
+    def test_unrelated_staged_changes_are_not_included_in_baseline_commit(self):
+        unrelated = self.repo / "draft.txt"; unrelated.write_text("Unfinished work")
+        subprocess.run(["git", "-C", str(self.repo), "add", "draft.txt"], check=True)
+        data = self.store.get("inha_2prop"); data["battery"]["capacity_Ah"]["value"] = 4
+        self.assertEqual(self.store.save(data, "KNU")["commit_status"], "committed")
+        committed = subprocess.run(["git", "-C", str(self.repo), "show", "--pretty=", "--name-only", "HEAD"], capture_output=True, text=True, check=True).stdout
+        self.assertNotIn("draft.txt", committed)
+        staged = subprocess.run(["git", "-C", str(self.repo), "diff", "--cached", "--name-only"], capture_output=True, text=True, check=True).stdout
+        self.assertIn("draft.txt", staged)
 
 
 if __name__ == "__main__":

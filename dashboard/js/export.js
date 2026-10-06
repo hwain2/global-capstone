@@ -6,13 +6,13 @@ AST.download = function (name,content,type) {
 AST.exportJSON = state => AST.download('항공기-입력값.json',JSON.stringify(state,null,2),'application/json');
 AST.exportCSV = function (r) {
   const rows=[['구분','항목','값','단위','Source','Status','Margin','Assumption / Note']];
-  if(AST.activeBaseline){
-    rows.push(['Baseline','Concept',AST.baselineLabel(AST.activeBaseline),'','BASELINE','r'+AST.activeBaseline.revision,'',AST.activeBaseline.source||'']);
-    for(const [key,label,unit] of [['series_count','배터리 직렬 수','S'],['capacity_Ah','배터리 용량','Ah'],['battery_mass_kg','배터리 질량','kg']]){
-      const field=AST.activeBaseline.battery?.[key];
-      rows.push(['Baseline',label,field?.value??'',unit,field?.source_type||'TBD',field?.value===null?'TBD':'입력값','',field?.source_note||'']);
-    }
+  const reference=r.state.baselineReference;
+  if(reference){
+    rows.push(['Baseline','Concept',AST.baselineLabel(reference),'','BASELINE','r'+reference.revision,'',reference.source||'']);
   }
+  for(const field of AST.batteryInfo(r.state))rows.push(['Baseline',field.label,field.value??'',field.unit,
+    field.source_type,field.value==null?'TBD':'작업용 입력값','',field.source_note]);
+  rows.push(['Baseline','프로펠러 수',r.state.propulsion.prop_count,'count',r.state.sources['propulsion.prop_count']||'ASSUMED','작업용 입력값','','']);
   for(const path of AST.allSourcePaths()){
     const value=AST.get(r.state,path),label=AST.fieldLabel(path);
     const def=AST.fields.flatMap(group=>group.items).concat(AST.feasibilityFields,AST.budgetFields).find(item=>item[0]===path);
@@ -35,8 +35,9 @@ AST.exportCSV = function (r) {
 AST.exportText = function (r) {
   const assessment=AST.assessFeasibility(r);
   const recommended=r.optimization.recommended;
-  const baseline=AST.activeBaseline;
-  const batteryText=baseline?`${AST.baselineValue(baseline.battery?.series_count)??'—'}S ${AST.baselineValue(baseline.battery?.capacity_Ah)??'—'} Ah · 배터리 질량 ${AST.baselineValue(baseline.battery?.battery_mass_kg)??'TBD'} kg`:'';
+  const baseline=r.state.baselineReference;
+  const [series,capacity,mass]=AST.batteryInfo(r.state);
+  const batteryText=`${series.value??'—'}S ${capacity.value??'—'} Ah · 배터리 질량 ${mass.value??'TBD'} kg · 프로펠러 ${r.state.propulsion.prop_count}개`;
   const body=['항공기 구조 설계 도구',baseline?`Baseline: ${AST.baselineLabel(baseline)} r${baseline.revision} · ${batteryText}`:'',...AST.resultDefs.map(d=>{const m=AST.resultMeta(d);return `${d.section} / ${d.label}: ${AST.fmt(d.read(r),4)} ${d.unit} [${m.source} · ${m.status}] ${m.note}`;}),'',
     '스파 자동 탐색: '+r.optimization.overall,recommended?`추천 깊이 ${AST.fmt(recommended.depthMm,2)} mm · 스파 질량 ${AST.fmt(recommended.massKg,3)} kg · Strength MS ${AST.fmt(recommended.strengthMargin,2)} · 처짐 ${AST.fmt(recommended.predictedDeflectionMm,2)} mm`:'추천 가능한 제작 후보 없음',
     '','Baseline Feasibility: '+assessment.verdict,assessment.lead,...assessment.cards.map(card=>`${card.title}: ${card.status}\n값: ${card.value}\n기준: ${card.criterion}\nMargin: ${card.margin}\n원인: ${card.cause}\n조치: ${card.action}`),'','권장 조치',...assessment.actions.map((action,i)=>`${i+1}. ${action}`)].join('\n');
